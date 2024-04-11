@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <link rel="stylesheet" type="text/css" href="./live2d/assets/waifu.css" />
-    <link rel="stylesheet" type="text/css" href="./css/lunbo.css" />
+    <link rel="stylesheet" type="text/css" href="./css/pix2text.css" />
     <link rel="stylesheet" type="text/css" href="./css/index.css" />
     <link rel="stylesheet" type="text/css" href="./css/search-form.css">
     <script src="./live2d/assets/jquery.min.js"></script>
@@ -27,6 +27,37 @@
     <div>
         <!-- 添加你的子页面内容 -->
     </div>
+    <!----------------------------------Pix2text--------------------------------------->
+    <div class="container">
+        <div class="left-panel">
+            <img id="imageDisplay" src="#" alt="Image will display here" style="width:100%; display:none;"/>
+            <input type="file" id="imageInput" onchange="previewImage();" />
+        </div>
+    
+        <div class="center-panel">
+            <button onclick="recognizeImage();">识别</button>
+        </div>
+    
+        <div class="right-panel">
+            <textarea id="textOutput" rows="10" style="width:100%;"></textarea>
+        </div>
+    </div>    
+    <script>
+        function previewImage() {
+            var reader = new FileReader();
+            reader.onload = function(e) {
+                document.getElementById('imageDisplay').src = e.target.result;
+                document.getElementById('imageDisplay').style.display = 'block';
+            };
+            reader.readAsDataURL(document.getElementById('imageInput').files[0]);
+        }
+        
+        function recognizeImage() {
+            // 这里应当调用后端API来处理图片并返回文本
+            // 模拟文本结果
+            document.getElementById('textOutput').value = "这里是识别结果...";
+        }
+    </script>
     <!----------------------------------首页搜索框--------------------------------------->
     <form onsubmit="submitFn(this, event);">
         <div class="search-wrapper">

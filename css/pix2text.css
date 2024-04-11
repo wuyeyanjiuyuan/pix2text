@@ -1,0 +1,19 @@
+.container {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 20px;
+}
+
+.left-panel, .center-panel, .right-panel {
+    flex: 1;
+}
+
+.center-panel {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+}
+
+input[type="file"] {
+    margin-top: 10px;
+}
