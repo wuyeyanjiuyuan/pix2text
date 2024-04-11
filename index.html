@@ -45,7 +45,7 @@
             <button class="button" onclick="copyText();">复制</button>
         </div>
     </div>
-    
+    <script src="./js/tesseract.min.js"></script>
     <script>
     function previewImage() {
         var display = document.getElementById('imageDisplay');
@@ -61,10 +61,32 @@
         reader.readAsDataURL(document.getElementById('imageInput').files[0]);
     }
     
-    function recognizeImage() {
-        // 在实际应用中，这里会调用后端的API
-        // 下面只是模拟
-        document.getElementById('textOutput').value = "这里将显示识别后的文本...";
+    async function recognizeImage() {
+        const image = document.getElementById('imageInput').files[0];
+        const outputArea = document.getElementById('textOutput');
+
+        if (image) {
+            // Clear previous text
+            outputArea.value = 'Recognizing...';
+
+            const worker = Tesseract.createWorker({
+                logger: m => console.log(m)
+            });
+
+            try {
+                await worker.load();
+                await worker.loadLanguage('eng');
+                await worker.initialize('eng');
+
+                const { data: { text } } = await worker.recognize(image);
+                outputArea.value = text;
+            } catch (error) {
+                console.error('OCR Error:', error);
+                outputArea.value = 'Failed to recognize text. Please try again.';
+            }
+
+            await worker.terminate();
+        }
     }
     
     function copyText() {

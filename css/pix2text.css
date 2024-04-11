@@ -7,21 +7,21 @@
     display: flex;
     justify-content: space-around;
     align-items: start;
-    padding-top: 200px;
+    padding-top: 100px;
 }
 
 #imageDisplay, #textOutput {
     border: 1px solid #ccc; /* 添加边框 */
     background-color: #f3f3f3;
     text-align: center;
-    line-height: 500px; /* 与高度一致 */
+    line-height: 400px; /* 与高度一致 */
     color: #999;
     font-style: italic;
 }
 
 #imageDisplay {
-    width: 500px; /* 调整为适合的大小 */
-    height: 500px; /* 调整为适合的大小 */
+    width: 400px; /* 调整为适合的大小 */
+    height: 400px; /* 调整为适合的大小 */
     display: flex;
     justify-content: center;
     align-items: center;
@@ -29,8 +29,8 @@
 }
 
 #textOutput {
-    width: 500px; /* 与图片显示框相同的宽度 */
-    height: 500px; /* 与图片显示框相同的高度 */
+    width: 400px; /* 与图片显示框相同的宽度 */
+    height: 400px; /* 与图片显示框相同的高度 */
     border: none;
     padding: 10px;
     box-sizing: border-box;
