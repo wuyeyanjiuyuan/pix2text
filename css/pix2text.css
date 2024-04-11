@@ -1,18 +1,43 @@
+.left-panel, .right-panel {
+    position: relative; /* 设置父元素为相对定位，这样子元素的绝对定位可以相对于它们定位 */
+    margin: 20px; /* 为了清晰起见，添加一些外边距 */
+}
+
 .container {
     display: flex;
     justify-content: space-around;
     align-items: start;
     padding-top: 20px;
 }
+
+#imageDisplay, #textOutput {
+    border: 1px solid #ccc; /* 添加边框 */
+    background-color: #f3f3f3;
+    text-align: center;
+    line-height: 300px; /* 与高度一致 */
+    color: #999;
+    font-style: italic;
+}
+
 #imageDisplay {
     width: 300px; /* 调整为适合的大小 */
     height: 300px; /* 调整为适合的大小 */
-    background-color: #f3f3f3;
     display: flex;
     justify-content: center;
     align-items: center;
     overflow: hidden;
 }
+
+#textOutput {
+    width: 300px; /* 与图片显示框相同的宽度 */
+    height: 300px; /* 与图片显示框相同的高度 */
+    border: none;
+    padding: 10px;
+    box-sizing: border-box;
+    resize: none; /* 禁止调整大小 */
+    margin: 0;
+}
+
 #imageDisplay img {
     max-width: 100%;
     max-height: 100%;
@@ -22,11 +47,10 @@
     margin: 10px auto;
     padding: 5px 20px;
 }
-#textOutput {
-    width: 300px; /* 与图片显示框相同的宽度 */
-    height: 300px; /* 与图片显示框相同的高度 */
-    background-color: #f3f3f3;
-    border: none;
-    padding: 10px;
-    box-sizing: border-box;
+.center-panel {
+    display: flex;
+    flex-direction: column;
+    justify-content: center; /* 垂直居中 */
+    align-items: center; /* 水平居中 */
+    height: 340px; /* 应与左右面板的总高度相同，包括框和按钮 */
 }
