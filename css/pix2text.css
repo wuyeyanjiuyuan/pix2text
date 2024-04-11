@@ -7,8 +7,7 @@
     display: flex;
     justify-content: space-around;
     align-items: start;
-    padding-top: 20px;
-    margin-top: 100px; /* 增加上边距以离开搜索框 */
+    padding-top: 200px;
 }
 
 #imageDisplay, #textOutput {
@@ -30,8 +29,8 @@
 }
 
 #textOutput {
-    width: 300px; /* 与图片显示框相同的宽度 */
-    height: 500px; /* 与图片显示框相同的高度 */
+    width: 600px; /* 与图片显示框相同的宽度 */
+    height: 300px; /* 与图片显示框相同的高度 */
     border: none;
     padding: 10px;
     box-sizing: border-box;
