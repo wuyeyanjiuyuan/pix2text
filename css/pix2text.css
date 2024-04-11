@@ -1,19 +1,32 @@
 .container {
     display: flex;
-    justify-content: space-between;
-    margin-top: 20px;
+    justify-content: space-around;
+    align-items: start;
+    padding-top: 20px;
 }
-
-.left-panel, .center-panel, .right-panel {
-    flex: 1;
-}
-
-.center-panel {
+#imageDisplay {
+    width: 300px; /* 调整为适合的大小 */
+    height: 300px; /* 调整为适合的大小 */
+    background-color: #f3f3f3;
     display: flex;
     justify-content: center;
-    align-items: flex-start;
+    align-items: center;
+    overflow: hidden;
 }
-
-input[type="file"] {
-    margin-top: 10px;
+#imageDisplay img {
+    max-width: 100%;
+    max-height: 100%;
+}
+.button {
+    display: block;
+    margin: 10px auto;
+    padding: 5px 20px;
+}
+#textOutput {
+    width: 300px; /* 与图片显示框相同的宽度 */
+    height: 300px; /* 与图片显示框相同的高度 */
+    background-color: #f3f3f3;
+    border: none;
+    padding: 10px;
+    box-sizing: border-box;
 }

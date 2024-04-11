@@ -30,33 +30,48 @@
     <!----------------------------------Pix2text--------------------------------------->
     <div class="container">
         <div class="left-panel">
-            <img id="imageDisplay" src="#" alt="Image will display here" style="width:100%; display:none;"/>
-            <input type="file" id="imageInput" onchange="previewImage();" />
+            <div id="imageDisplay">
+                <!-- 预览的图片将在这里显示 -->
+            </div>
+            <input type="file" id="imageInput" class="button" onchange="previewImage();" />
         </div>
     
         <div class="center-panel">
-            <button onclick="recognizeImage();">识别</button>
+            <button class="button" onclick="recognizeImage();">➡️ 识别</button>
         </div>
     
         <div class="right-panel">
-            <textarea id="textOutput" rows="10" style="width:100%;"></textarea>
+            <textarea id="textOutput"></textarea>
+            <button class="button" onclick="copyText();">复制</button>
         </div>
-    </div>    
+    </div>
+    
     <script>
-        function previewImage() {
-            var reader = new FileReader();
-            reader.onload = function(e) {
-                document.getElementById('imageDisplay').src = e.target.result;
-                document.getElementById('imageDisplay').style.display = 'block';
-            };
-            reader.readAsDataURL(document.getElementById('imageInput').files[0]);
-        }
-        
-        function recognizeImage() {
-            // 这里应当调用后端API来处理图片并返回文本
-            // 模拟文本结果
-            document.getElementById('textOutput').value = "这里是识别结果...";
-        }
+    function previewImage() {
+        var display = document.getElementById('imageDisplay');
+        display.innerHTML = ''; // 清除旧的预览
+        var reader = new FileReader();
+        reader.onload = function(e) {
+            var img = new Image();
+            img.src = e.target.result;
+            img.onload = function() {
+                display.appendChild(img);
+            }
+        };
+        reader.readAsDataURL(document.getElementById('imageInput').files[0]);
+    }
+    
+    function recognizeImage() {
+        // 在实际应用中，这里会调用后端的API
+        // 下面只是模拟
+        document.getElementById('textOutput').value = "这里将显示识别后的文本...";
+    }
+    
+    function copyText() {
+        var textOutput = document.getElementById('textOutput');
+        textOutput.select();
+        document.execCommand('copy');
+    }
     </script>
     <!----------------------------------首页搜索框--------------------------------------->
     <form onsubmit="submitFn(this, event);">
