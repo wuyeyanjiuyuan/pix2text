@@ -29,7 +29,7 @@
 }
 
 #textOutput {
-    width: 600px; /* 与图片显示框相同的宽度 */
+    width: 500px; /* 与图片显示框相同的宽度 */
     height: 300px; /* 与图片显示框相同的高度 */
     border: none;
     padding: 10px;
@@ -53,5 +53,5 @@
     justify-content: center; /* 垂直居中 */
     align-items: center; /* 水平居中 */
     height: 340px; /* 应与左右面板的总高度相同，包括框和按钮 */
-    margin-top: 100px; /* 增加上边距以离开搜索框 */
+    margin-top: 50px; /* 增加上边距以离开搜索框 */
 }
