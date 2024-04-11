@@ -29,7 +29,7 @@
 }
 
 #textOutput {
-    width: 500px; /* 与图片显示框相同的宽度 */
+    width: 300px; /* 与图片显示框相同的宽度 */
     height: 300px; /* 与图片显示框相同的高度 */
     border: none;
     padding: 10px;
