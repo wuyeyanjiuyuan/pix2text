@@ -1,8 +1,14 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>午夜研究院</title>
   <link rel="icon" href="images/icon.ico" sizes="16x16">
 
   <!-- 样式 -->
   <link rel="stylesheet" href="css/index.css">
+  <link rel="stylesheet" href="css/lunbo.css">
   <link rel="stylesheet" href="css/search-form.css">
   <link rel="stylesheet" href="./live2d/assets/waifu.css" />
   <!-- 不再需要 loading.css，如果里面有 .module {opacity:0} 就别引入了 -->
@@ -40,79 +46,11 @@
   </div>
 </header>
 
-<!-- 主体区域：一个大卡片装 Pix2Text 工具 -->
-<main id="main-container">
-        <section class="tool-card">
-    <!----------------------------------Pix2text--------------------------------------->
-    <div class="container">
-        <div class="left-panel">
-            <div id="imageDisplay">
-                上传的图片将显示在这里
-            </div>
-            <input type="file" id="imageInput" class="button" onchange="previewImage();" />
-        </div>
-    
-        <div class="center-panel">
-            <button class="button" onclick="recognizeImage();">➡️ 识别</button>
-        </div>
-    
-        <div class="right-panel">
-            <textarea id="textOutput">识别的文本将显示在这里</textarea>
-            <button class="button" onclick="copyText();">复制</button>
-        </div>
-    </div>
-</main>
+<!-- 主题内容 -->
+ <main id="main-container">
+  </main>
 
-    <script>
-    function previewImage() {
-        var display = document.getElementById('imageDisplay');
-        display.innerHTML = ''; // 清除旧的预览
-        var reader = new FileReader();
-        reader.onload = function(e) {
-            var img = new Image();
-            img.src = e.target.result;
-            img.onload = function() {
-                display.appendChild(img);
-            }
-        };
-        reader.readAsDataURL(document.getElementById('imageInput').files[0]);
-    }
-    
-    async function recognizeImage() {
-        const image = document.getElementById('imageInput').files[0];
-        const outputArea = document.getElementById('textOutput');
-
-        if (image) {
-            // Clear previous text
-            outputArea.value = 'Recognizing...';
-
-            const worker = Tesseract.createWorker({
-                logger: m => console.log(m)
-            });
-
-            try {
-                await worker.load();
-                await worker.loadLanguage('eng');
-                await worker.initialize('eng');
-
-                const { data: { text } } = await worker.recognize(image);
-                outputArea.value = text;
-            } catch (error) {
-                console.error('OCR Error:', error);
-                outputArea.value = 'Failed to recognize text. Please try again.';
-            }
-
-            await worker.terminate();
-        }
-    }
-    
-    function copyText() {
-        var textOutput = document.getElementById('textOutput');
-        textOutput.select();
-        document.execCommand('copy');
-    }
-    </script>
-    <!-- Live2D 模块（内容里有 waifu，依旧固定在右下角） -->
+  <!-- Live2D 模块（内容里有 waifu，依旧固定在右下角） -->
   <div id="module-live2d"></div>
 
   <!-- 其它 JS 特效（点击飘字等），只包含 <script> 的模块 -->
@@ -142,6 +80,5 @@
       }
     });
   </script>
-
 </body>
 </html>
