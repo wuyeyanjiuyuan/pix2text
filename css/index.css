@@ -87,6 +87,18 @@ header.navbar {
   margin-left: auto;
 }
 
+#main-container {
+  max-width: 1200px;
+  margin: 24px auto 40px;
+  padding: 0 20px;
+}
+
+.tool-card {
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 40px 24px 60px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.06);
+}
 
 
 /* 页脚 */
