@@ -2,12 +2,14 @@
     /* 容器样式 */
     #tree-container {
         position: relative; width: 100%; height: 600px;
-        /* 背景暂时设为深红，如果 JS 挂了，你应该能看到这个红色背景 */
-        background: #330000; 
+        /* 默认深灰背景，如果变红说明报错，变蓝说明成功 */
+        background: #111; 
         border-radius: 12px; overflow: hidden;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.2);
     }
-    /* 强制画布绝对定位，防止被挤压 */
-    #three-canvas { 
+    
+    /* ★★★ 修正点：这里的 ID 改为 tree-canvas 以匹配 JS ★★★ */
+    #tree-canvas { 
         width: 100%; height: 100%; display: block; 
         position: absolute; top: 0; left: 0; z-index: 1;
     }
@@ -21,6 +23,7 @@
         background: rgba(255, 255, 255, 0.2); 
         border: 1px solid rgba(255, 255, 255, 0.5);
         border-radius: 30px; color: #fff; font-size: 14px;
+        backdrop-filter: blur(4px);
     }
     
     .cam-box {
@@ -34,7 +37,7 @@
 
 <div id="tree-container">
     <div class="ui-layer">
-        <div id="status-text" class="status-pill">调试模式：如果不显示请按F12</div>
+        <div id="status-text" class="status-pill">调试模式：正在启动...</div>
         <div style="margin-top:10px; font-size:12px; color:white;">
             ✊ 握拳：聚合 | 👌 捏合：抓取
         </div>
@@ -42,7 +45,8 @@
 
     <div class="cam-box"><canvas id="output-canvas"></canvas></div>
     <video id="input-video" playsinline></video>
-    <div id="three-canvas"></div>
+    
+    <div id="tree-canvas"></div>
 </div>
 
 <script src="js/three.min.js"></script>
@@ -56,61 +60,60 @@
     console.log(">>> [Debug] 脚本开始执行");
 
     try {
+        // 1. 获取容器 (ID 必须匹配 HTML 中的 id="tree-canvas")
         const container = document.getElementById('tree-canvas');
-        if (!container) throw new Error("找不到 #tree-canvas 容器");
+        if (!container) throw new Error("找不到 #tree-canvas，请检查 HTML ID");
 
-        // 1. 尺寸检查
+        // 2. 尺寸检查
         let width = container.clientWidth;
         let height = container.clientHeight;
-        console.log(`>>> [Debug] 容器尺寸: ${width} x ${height}`);
+        
+        // 兜底尺寸 (防止容器未渲染时尺寸为0)
+        if (!width || width === 0) width = 800;
+        if (!height || height === 0) height = 600;
 
-        // 如果尺寸为0，强制给个默认值
-        if (width === 0) width = 800;
-        if (height === 0) height = 600;
-
-        // 2. 初始化场景
+        // 3. 初始化场景
         const scene = new THREE.Scene();
-        // ★ 强制背景为深蓝色。如果你看到蓝色，说明 Three.js 启动成功了！
+        // ★★★ 成功标志：如果你看到这个深蓝色，说明 Three.js 跑通了 ★★★
         scene.background = new THREE.Color(0x000055); 
 
         const camera = new THREE.PerspectiveCamera(60, width / height, 1, 5000);
-        camera.position.set(0, 100, 800); // 往后拉远一点
+        camera.position.set(0, 100, 800); 
 
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(width, height);
         renderer.setPixelRatio(window.devicePixelRatio);
         
-        // 清空容器再加入 (防止重复加载导致多个画布堆叠)
+        // 清理旧画布 (防止热重载堆叠)
         while(container.firstChild) { container.removeChild(container.firstChild); }
         container.appendChild(renderer.domElement);
-        console.log(">>> [Debug] Renderer 添加成功");
 
-        // 3. 创建简单的几何体 (使用 BasicMaterial，不需要灯光也能亮)
+        // 4. 创建几何体 (不依赖纹理，不依赖灯光，只要渲染器工作就能看见)
         const particleGroup = new THREE.Group();
         scene.add(particleGroup);
 
-        const geoBox = new THREE.BoxGeometry(10, 10, 10);
-        // 使用红绿黄三种醒目的颜色
-        const matRed = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-        const matGreen = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
-        const matYellow = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+        const geoBox = new THREE.BoxGeometry(15, 15, 15);
+        // 使用 Basic 材质，它是自发光的，绝对不会黑
+        const matRed = new THREE.MeshBasicMaterial({ color: 0xff3333 });
+        const matGreen = new THREE.MeshBasicMaterial({ color: 0x33ff33 });
+        const matYellow = new THREE.MeshBasicMaterial({ color: 0xffff33 });
         const mats = [matRed, matGreen, matYellow];
 
         const particles = [];
-        const PARTICLE_COUNT = 500;
+        const PARTICLE_COUNT = 400;
 
         for(let i=0; i<PARTICLE_COUNT; i++) {
             const mat = mats[Math.floor(Math.random() * mats.length)];
             const mesh = new THREE.Mesh(geoBox, mat);
             
-            // 随机散开
+            // 随机散开位置
             mesh.position.set(
-                (Math.random() - 0.5) * 1000,
+                (Math.random() - 0.5) * 1200,
                 (Math.random() - 0.5) * 800,
-                (Math.random() - 0.5) * 600
+                (Math.random() - 0.5) * 800
             );
             
-            // 保存目标位置 (圣诞树形态)
+            // 计算树的形状位置 (目标点)
             const y = (Math.random() - 0.5) * 600;
             const relY = (y + 300) / 600;
             const radius = 300 * (1 - relY) + 20;
@@ -122,16 +125,14 @@
                     Math.cos(angle) * radius,
                     y,
                     Math.sin(angle) * radius
-                ),
-                scale: Math.random() * 2 + 1
+                )
             };
             
             particleGroup.add(mesh);
             particles.push(mesh);
         }
-        console.log(">>> [Debug] 500个粒子创建完毕");
 
-        // 4. 状态控制
+        // 5. 状态控制
         let isTree = false;
         
         function toTree() {
@@ -152,26 +153,32 @@
             });
         }
 
-        // 5. 渲染循环
+        // 6. 渲染循环
         function animate(time) {
             requestAnimationFrame(animate);
             TWEEN.update(time);
             
             if(isTree) {
                 particleGroup.rotation.y += 0.01;
+            } else {
+                particleGroup.rotation.y += 0.002;
             }
             
             renderer.render(scene, camera);
         }
         animate();
-        console.log(">>> [Debug] 动画循环启动");
 
-        // 6. MediaPipe 手势
+        // 7. MediaPipe 手势
         const videoElement = document.getElementById('input-video');
         const canvasElement = document.getElementById('output-canvas');
         const canvasCtx = canvasElement.getContext('2d');
 
         function onResults(results) {
+            // 只要进这里，说明 AI 在工作
+            if(document.getElementById('status-text').innerText.includes("启动")) {
+                document.getElementById('status-text').innerText = "AI 就绪，请伸手";
+            }
+
             canvasCtx.save();
             canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
             canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
@@ -181,19 +188,22 @@
                 drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: '#00FF00', lineWidth: 2});
                 drawLandmarks(canvasCtx, landmarks, {color: '#FF0000', lineWidth: 1, radius: 2});
 
-                // 简单的握拳检测
                 const wrist = landmarks[0];
                 const middleTip = landmarks[12];
-                // 距离转为相对画布的比例
+                // 简单的距离计算
                 const dist = Math.sqrt(Math.pow(middleTip.x - wrist.x, 2) + Math.pow(middleTip.y - wrist.y, 2));
                 
-                if(dist < 0.2) toTree();
-                else if(dist > 0.35) toSpread();
+                // 阈值判断
+                if(dist < 0.25) toTree();
+                else if(dist > 0.4) toSpread();
             }
             canvasCtx.restore();
         }
 
-        const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+        const hands = new Hands({locateFile: (file) => {
+            // return `js/${file}`; // 本地
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`; // CDN
+        }});
         hands.setOptions({maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5});
         hands.onResults(onResults);
 
@@ -202,11 +212,13 @@
             width: 320, height: 240
         });
         cameraUtils.start();
-        console.log(">>> [Debug] 摄像头启动指令已发送");
 
     } catch (e) {
-        console.error(">>> [Fatal Error]", e);
-        document.getElementById('status-text').innerText = "错误: " + e.message;
-        document.getElementById('status-text').style.backgroundColor = "red";
+        console.error(e);
+        const status = document.getElementById('status-text');
+        if(status) {
+            status.innerText = "错误: " + e.message;
+            status.style.backgroundColor = "red";
+        }
     }
 </script>
