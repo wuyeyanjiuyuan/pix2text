@@ -1,7 +1,8 @@
 <style>
     #tree-container {
         position: relative; width: 100%; height: 600px;
-        background: #000; border-radius: 12px; overflow: hidden;
+        background: #111; /* 背景改为深灰，防止全黑看不清 */
+        border-radius: 12px; overflow: hidden;
         box-shadow: 0 10px 30px rgba(0,0,0,0.2);
     }
     #three-canvas { width: 100%; height: 100%; display: block; }
@@ -13,11 +14,12 @@
     }
     .status-pill {
         display: inline-block; padding: 8px 16px;
-        background: rgba(20, 40, 20, 0.8); border: 1px solid rgba(100, 255, 100, 0.3);
+        background: rgba(255, 255, 255, 0.1); 
+        border: 1px solid rgba(255, 255, 255, 0.2);
         border-radius: 30px; backdrop-filter: blur(5px);
-        font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #50ff50;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-        margin-bottom: 10px; transition: all 0.3s;
+        font-family: 'Segoe UI', sans-serif; font-size: 14px; 
+        color: #ffcc00; /* 金色文字 */
+        margin-bottom: 10px;
     }
     
     .cam-box {
@@ -31,9 +33,9 @@
 
 <div id="tree-container">
     <div class="ui-layer">
-        <div id="status-text" class="status-pill">正在生成金色粒子...</div>
+        <div id="status-text" class="status-pill">正在构建 3D 积木树...</div>
         <div style="margin-top:10px; font-size:12px; color:rgba(255,255,255,0.6);">
-            ✊ 握拳：聚合圣诞树 | 👌 捏合：抓取照片
+            ✊ 握拳：聚合 | 👌 捏合：抓取红色方块
         </div>
     </div>
 
@@ -55,179 +57,168 @@
     let width = container.clientWidth;
     let height = container.clientHeight;
 
-    // ================= 1. 初始化场景 =================
+    // ================= 1. 初始化场景 (无雾气版) =================
     const scene = new THREE.Scene();
-    scene.fog = new THREE.FogExp2(0x000000, 0.0008); 
+    // scene.fog = new THREE.FogExp2(0x000000, 0.0008); // ★ 移除雾气，防止变黑
 
     const camera = new THREE.PerspectiveCamera(60, width / height, 1, 5000);
-    camera.position.set(0, 100, 800);
+    camera.position.set(0, 50, 800); // 相机放低一点，平视
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(width, height);
     renderer.setPixelRatio(window.devicePixelRatio);
     container.appendChild(renderer.domElement);
 
-    // ================= 2. 粒子系统 =================
+    // ★ 灯光系统 (3D物体需要灯光)
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6); // 强环境光
+    scene.add(ambientLight);
     
-    const PARTICLE_COUNT = 800; 
+    const dirLight = new THREE.DirectionalLight(0xffddcc, 0.8); // 暖色主光
+    dirLight.position.set(200, 500, 200);
+    scene.add(dirLight);
+
+    const pointLight = new THREE.PointLight(0xff0000, 1, 500); // 红色点光增加氛围
+    pointLight.position.set(0, 0, 0);
+    scene.add(pointLight);
+
+    // ================= 2. 几何粒子系统 =================
+    
+    const PARTICLE_COUNT = 600; // 3D模型比较重，数量稍微减少一点
     const TREE_HEIGHT = 600;
     const TREE_BASE_RADIUS = 300;
-    
-    // ★ 修复：Emoji 纹理生成 (确保颜色鲜亮)
-    function createEmojiTexture(emoji) {
-        const cvs = document.createElement('canvas');
-        cvs.width = 128; cvs.height = 128; // 提高分辨率
-        const ctx = cvs.getContext('2d');
-        ctx.font = '100px serif'; // 字号变大
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillStyle = '#ffffff'; // 没用，Emoji自带颜色，但有些浏览器需要
-        ctx.fillText(emoji, 64, 64);
-        return new THREE.CanvasTexture(cvs);
-    }
 
-    // ★ 修复：金色光点纹理 (更亮、更柔和)
-    function createSparkTexture() {
-        const cvs = document.createElement('canvas');
-        cvs.width = 64; cvs.height = 64;
-        const ctx = cvs.getContext('2d');
-        const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
-        // 中心白 -> 中间金 -> 边缘透明
-        gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
-        gradient.addColorStop(0.2, 'rgba(255, 220, 100, 0.8)');
-        gradient.addColorStop(0.5, 'rgba(255, 180, 50, 0.3)');
-        gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
-        ctx.fillStyle = gradient;
-        ctx.fillRect(0, 0, 64, 64);
-        return new THREE.CanvasTexture(cvs);
-    }
+    // 预定义几种几何体 (Geometry)
+    const geoBox = new THREE.BoxGeometry(1, 1, 1);       // 礼物/方块
+    const geoSphere = new THREE.SphereGeometry(0.6, 16, 16); // 彩球
+    const geoCone = new THREE.ConeGeometry(0.6, 1.5, 16);    // 小树
+    const geoTetra = new THREE.TetrahedronGeometry(0.8);     // 星星/碎片
 
-    // ★ 测试用：纯色卡片 (确保能看见东西)
-    function createColorCardTexture(color) {
-        const cvs = document.createElement('canvas');
-        cvs.width = 128; cvs.height = 128;
-        const ctx = cvs.getContext('2d');
-        ctx.fillStyle = color;
-        ctx.fillRect(0, 0, 128, 128);
-        // 加个白边框
-        ctx.strokeStyle = 'white';
-        ctx.lineWidth = 10;
-        ctx.strokeRect(0, 0, 128, 128);
-        return new THREE.CanvasTexture(cvs);
+    // 预定义几种材质颜色 (Material)
+    // 使用 MeshPhongMaterial，这样会有反光立体感
+    function getMat(color) {
+        return new THREE.MeshPhongMaterial({ 
+            color: color, 
+            shininess: 100, 
+            emissive: color, // 自发光一点点，防止太暗
+            emissiveIntensity: 0.3
+        });
     }
     
-    // 材质池
-    const textures = [
-        createEmojiTexture('🎁'), createEmojiTexture('🔔'), 
-        createEmojiTexture('🎄'), createEmojiTexture('🎅'),
-        createEmojiTexture('❄️'), createEmojiTexture('⭐'),
-        createSparkTexture(), createSparkTexture(), // 多放几个光点，增加发光感
-        createSparkTexture(), createSparkTexture()
+    const matRed = getMat(0xff3333);   // 红
+    const matGreen = getMat(0x33aa33); // 绿
+    const matGold = getMat(0xffaa00);  // 金
+    const matWhite = getMat(0xffffff); // 白
+    const matBlue = getMat(0x3333ff);  // 蓝
+
+    // 组合池
+    const shapes = [
+        { geo: geoBox, mat: matRed },    // 红礼物
+        { geo: geoBox, mat: matGold },   // 金礼物
+        { geo: geoSphere, mat: matRed }, // 红球
+        { geo: geoSphere, mat: matGold },// 金球
+        { geo: geoSphere, mat: matBlue },// 蓝球
+        { geo: geoCone, mat: matGreen }, // 绿树
+        { geo: geoTetra, mat: matWhite } // 雪花
     ];
 
     const particles = [];
-    const photoParticles = [];
+    const specialParticles = []; // 存几个特殊的用来交互
     const particleGroup = new THREE.Group();
     scene.add(particleGroup);
 
-    // 树顶之星
-    const topStarGeo = new THREE.SphereGeometry(20, 16, 16);
-    const topStarMat = new THREE.MeshBasicMaterial({ color: 0xffff88 });
-    const topStar = new THREE.Mesh(topStarGeo, topStarMat);
-    topStar.position.set(0, TREE_HEIGHT/2 + 20, 0);
-    topStar.visible = false; 
+    // 树顶大星星
+    const topStar = new THREE.Mesh(
+        new THREE.OctahedronGeometry(25, 0), 
+        new THREE.MeshBasicMaterial({ color: 0xffff00 }) // 纯色发光
+    );
+    topStar.position.set(0, TREE_HEIGHT/2 + 30, 0);
+    topStar.visible = false;
     scene.add(topStar);
-    
+
     // 初始化粒子
     function initParticles() {
-        // 1. 生成 800 个装饰粒子
         for (let i = 0; i < PARTICLE_COUNT; i++) {
-            const tex = textures[Math.floor(Math.random() * textures.length)];
-            const material = new THREE.SpriteMaterial({ 
-                map: tex, 
-                color: 0xffffff, // ★ 关键：这里设为白色，让纹理原色显示出来
-                transparent: true,
-                opacity: 0.9,
-                blending: THREE.AdditiveBlending // ★ 关键：加法混合，让重叠处发光，消除黑边
-            });
-            createParticle(material, false);
+            // 随机选一个形状
+            const shape = shapes[Math.floor(Math.random() * shapes.length)];
+            
+            // 创建 Mesh
+            const mesh = new THREE.Mesh(shape.geo, shape.mat);
+            
+            // 随机位置逻辑 (保持之前的算法)
+            // 1. 树形态
+            const y = (Math.random() - 0.5) * TREE_HEIGHT; 
+            const relY = (y + TREE_HEIGHT/2) / TREE_HEIGHT; 
+            const radius = TREE_BASE_RADIUS * (1 - relY) + 20; // +20防止太细
+            const angle = Math.random() * Math.PI * 2 * 8; 
+            
+            const targetX = Math.cos(angle) * radius;
+            const targetY = y;
+            const targetZ = Math.sin(angle) * radius;
+
+            // 2. 散开形态
+            const spreadX = (Math.random() - 0.5) * 1500;
+            const spreadY = (Math.random() - 0.5) * 1000;
+            const spreadZ = (Math.random() - 0.5) * 800;
+
+            mesh.position.set(spreadX, spreadY, spreadZ);
+            
+            // 随机大小 (3D物体大小大概在 10~25 之间)
+            const s = Math.random() * 15 + 10;
+            mesh.scale.set(s, s, s);
+            
+            // 随机旋转
+            mesh.rotation.set(Math.random()*3, Math.random()*3, Math.random()*3);
+
+            // 数据绑定
+            mesh.userData = {
+                treePos: new THREE.Vector3(targetX, targetY, targetZ),
+                spreadPos: new THREE.Vector3(spreadX, spreadY, spreadZ),
+                baseScale: s,
+                rotSpeed: { x: Math.random()*0.02, y: Math.random()*0.02 }
+            };
+
+            particleGroup.add(mesh);
+            particles.push(mesh);
         }
 
-        // 2. 生成 5 个彩色卡片 (模拟照片，测试用)
-        const colors = ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff'];
-        for (let i = 0; i < 5; i++) {
-            const tex = createColorCardTexture(colors[i]);
-            const material = new THREE.SpriteMaterial({ 
-                map: tex, 
-                color: 0xffffff,
-                transparent: false // 照片不需要透明混合，保持清晰
-            });
-            createParticle(material, true); 
-        }
-    }
-
-    function createParticle(material, isPhoto) {
-        const sprite = new THREE.Sprite(material);
-        
-        // 树形态位置 (螺旋上升)
-        const y = (Math.random() - 0.5) * TREE_HEIGHT; 
-        const relY = (y + TREE_HEIGHT/2) / TREE_HEIGHT; 
-        // 调整形状：底部胖，顶部尖
-        // 使用幂函数让下面更蓬松
-        const radius = TREE_BASE_RADIUS * Math.pow((1 - relY), 0.8); 
-        const angle = Math.random() * Math.PI * 2 * 10; // 更多圈数
-        
-        const targetX = Math.cos(angle) * radius;
-        const targetY = y;
-        const targetZ = Math.sin(angle) * radius;
-
-        // 散开形态位置
-        const spreadX = (Math.random() - 0.5) * 2000;
-        const spreadY = (Math.random() - 0.5) * 1200;
-        const spreadZ = (Math.random() - 0.5) * 1000;
-
-        sprite.position.set(spreadX, spreadY, spreadZ);
-        
-        // 调整大小：光点小一点，Emoji中等，照片大一点
-        let scale = Math.random() * 20 + 10;
-        if (isPhoto) scale = 60;
-        
-        sprite.scale.set(scale, scale, 1);
-
-        sprite.userData = {
-            treePos: new THREE.Vector3(targetX, targetY, targetZ),
-            spreadPos: new THREE.Vector3(spreadX, spreadY, spreadZ),
-            baseScale: scale,
-            isPhoto: isPhoto
-        };
-
-        particleGroup.add(sprite);
-        particles.push(sprite);
-        
-        if (isPhoto) {
-            photoParticles.push(sprite);
+        // ★ 创建几个特殊的“黑卡片”替代品 (用红色大方块代替)
+        // 确保捏合时肯定能看到东西
+        for(let i=0; i<5; i++) {
+            const mesh = new THREE.Mesh(geoBox, matRed);
+            mesh.position.set((Math.random()-0.5)*500, (Math.random()-0.5)*500, 0);
+            mesh.scale.set(30, 30, 5); // 扁平大方块
+            
+            mesh.userData = {
+                treePos: new THREE.Vector3(0, (Math.random()-0.5)*400, 200), // 树上显眼位置
+                spreadPos: new THREE.Vector3((Math.random()-0.5)*500, (Math.random()-0.5)*500, 200),
+                baseScale: 30,
+                rotSpeed: { x: 0.01, y: 0.01 },
+                isSpecial: true
+            };
+            particleGroup.add(mesh);
+            specialParticles.push(mesh);
         }
     }
 
     initParticles();
 
-    // ================= 4. 状态控制 =================
+    // ================= 3. 状态控制 =================
     
     let currentState = 'spread'; 
     let isPinching = false;
-    let activePhoto = null; 
+    let activeObj = null; 
 
     function toTreeState() {
         if (currentState === 'tree') return;
         currentState = 'tree';
-        statusText.innerText = "🎄 圣诞树已聚合";
+        statusText.innerText = "🎄 3D 圣诞树";
         topStar.visible = true;
 
-        particles.forEach(p => {
-            if (p === activePhoto) return; 
+        [...particles, ...specialParticles].forEach(p => {
+            if (p === activeObj) return; 
             new TWEEN.Tween(p.position)
                 .to({ x: p.userData.treePos.x, y: p.userData.treePos.y, z: p.userData.treePos.z }, 1500)
-                .easing(TWEEN.Easing.Exponential.InOut)
+                .easing(TWEEN.Easing.Elastic.Out) // 换个弹性的缓动
                 .start();
         });
     }
@@ -235,11 +226,11 @@
     function toSpreadState() {
         if (currentState === 'spread') return;
         currentState = 'spread';
-        statusText.innerText = "✨ 自由粒子模式";
+        statusText.innerText = "✨ 自由浮动";
         topStar.visible = false;
 
-        particles.forEach(p => {
-            if (p === activePhoto) return;
+        [...particles, ...specialParticles].forEach(p => {
+            if (p === activeObj) return;
             new TWEEN.Tween(p.position)
                 .to({ x: p.userData.spreadPos.x, y: p.userData.spreadPos.y, z: p.userData.spreadPos.z }, 2000)
                 .easing(TWEEN.Easing.Cubic.Out)
@@ -247,56 +238,58 @@
         });
     }
 
-    function grabPhoto() {
-        if (isPinching || photoParticles.length === 0) return;
+    function grabObj() {
+        if (isPinching || specialParticles.length === 0) return;
         isPinching = true;
         
-        activePhoto = photoParticles[Math.floor(Math.random() * photoParticles.length)];
+        activeObj = specialParticles[Math.floor(Math.random() * specialParticles.length)];
         
-        if(!activePhoto) return;
-
         // 移到屏幕中央
-        new TWEEN.Tween(activePhoto.position)
-            .to({ x: 0, y: 100, z: 600 }, 800)
-            .easing(TWEEN.Easing.Elastic.Out)
+        new TWEEN.Tween(activeObj.position)
+            .to({ x: 0, y: 50, z: 600 }, 800)
+            .easing(TWEEN.Easing.Back.Out)
+            .start();
+
+        // 旋转回正
+        new TWEEN.Tween(activeObj.rotation)
+            .to({ x: 0, y: 0, z: 0 }, 800)
             .start();
 
         // 放大
-        new TWEEN.Tween(activePhoto.scale)
-            .to({ x: 300, y: 300 }, 800) 
-            .easing(TWEEN.Easing.Elastic.Out)
+        new TWEEN.Tween(activeObj.scale)
+            .to({ x: 80, y: 80, z: 10 }, 800) 
+            .easing(TWEEN.Easing.Back.Out)
             .start();
             
-        // 稍微变色提示选中
-        // activePhoto.material.color.setHex(0xffaaaa); 
-        statusText.innerText = "🖼️ 抓取演示卡片";
+        // 变色提示
+        activeObj.material.color.setHex(0xffff00); 
+        statusText.innerText = "🎁 抓取成功！";
     }
 
-    function releasePhoto() {
-        if (!isPinching || !activePhoto) return;
+    function releaseObj() {
+        if (!isPinching || !activeObj) return;
         isPinching = false;
         
-        // activePhoto.material.color.setHex(0xffffff);
+        activeObj.material.color.setHex(0xff3333); // 恢复红色
 
-        const target = currentState === 'tree' ? activePhoto.userData.treePos : activePhoto.userData.spreadPos;
-        const scale = activePhoto.userData.baseScale;
+        const target = currentState === 'tree' ? activeObj.userData.treePos : activeObj.userData.spreadPos;
+        const scale = activeObj.userData.baseScale;
 
-        new TWEEN.Tween(activePhoto.position).to(target, 1000).easing(TWEEN.Easing.Back.Out).start();
-        new TWEEN.Tween(activePhoto.scale).to({x: scale, y: scale}, 1000).easing(TWEEN.Easing.Back.Out).start();
+        new TWEEN.Tween(activeObj.position).to(target, 1000).easing(TWEEN.Easing.Back.Out).start();
+        new TWEEN.Tween(activeObj.scale).to({x: scale, y: scale, z: 5}, 1000).easing(TWEEN.Easing.Back.Out).start();
         
-        activePhoto = null;
-        statusText.innerText = currentState === 'tree' ? "🎄 圣诞树已聚合" : "✨ 自由粒子模式";
+        activeObj = null;
+        statusText.innerText = currentState === 'tree' ? "🎄 3D 圣诞树" : "✨ 自由浮动";
     }
 
-    // ================= 5. MediaPipe =================
+    // ================= 4. MediaPipe =================
     const videoElement = document.getElementById('input-video');
     const canvasElement = document.getElementById('output-canvas');
     const canvasCtx = canvasElement.getContext('2d');
 
     function onResults(results) {
-        statusText.classList.remove('loading');
-        if(statusText.innerText.includes("生成")) {
-             statusText.innerText = "引擎就绪，请尝试捏合";
+        if(statusText.innerText.includes("构建")) {
+             statusText.innerText = "引擎就绪，请伸手";
         }
         
         canvasCtx.save();
@@ -317,9 +310,9 @@
             const pinchDist = Math.sqrt(Math.pow(thumbTip.x - indexTip.x, 2) + Math.pow(thumbTip.y - indexTip.y, 2));
 
             if (pinchDist < 0.05) { 
-                grabPhoto();
+                grabObj();
             } else {
-                releasePhoto();
+                releaseObj();
             }
 
             if (!isPinching) {
@@ -336,7 +329,6 @@
     const hands = new Hands({locateFile: (file) => {
         return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
     }});
-    
     hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
     hands.onResults(onResults);
 
@@ -346,17 +338,24 @@
     });
     cameraUtils.start();
 
-    // ================= 6. 渲染循环 =================
+    // ================= 5. 渲染循环 =================
     function animate(time) {
         requestAnimationFrame(animate);
         TWEEN.update(time); 
 
+        // 整体旋转
         if (currentState === 'tree' && !isPinching) {
             particleGroup.rotation.y += 0.005;
             topStar.rotation.y -= 0.02;
         } else if (currentState === 'spread') {
             particleGroup.rotation.y += 0.001;
         }
+
+        // 让每个小积木自己也转起来，更有动感
+        particles.forEach(p => {
+            p.rotation.x += p.userData.rotSpeed.x;
+            p.rotation.y += p.userData.rotSpeed.y;
+        });
 
         renderer.render(scene, camera);
     }
