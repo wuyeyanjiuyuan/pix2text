@@ -1,31 +1,32 @@
 <style>
+    /* 容器样式 */
     #tree-container {
         position: relative; width: 100%; height: 600px;
-        background: #111; /* 背景改为深灰，防止全黑看不清 */
+        /* 背景暂时设为深红，如果 JS 挂了，你应该能看到这个红色背景 */
+        background: #330000; 
         border-radius: 12px; overflow: hidden;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.2);
     }
-    #three-canvas { width: 100%; height: 100%; display: block; }
+    /* 强制画布绝对定位，防止被挤压 */
+    #three-canvas { 
+        width: 100%; height: 100%; display: block; 
+        position: absolute; top: 0; left: 0; z-index: 1;
+    }
     
-    /* UI 层 */
     .ui-layer {
         position: absolute; top: 20px; left: 20px; z-index: 10;
         pointer-events: none; 
     }
     .status-pill {
         display: inline-block; padding: 8px 16px;
-        background: rgba(255, 255, 255, 0.1); 
-        border: 1px solid rgba(255, 255, 255, 0.2);
-        border-radius: 30px; backdrop-filter: blur(5px);
-        font-family: 'Segoe UI', sans-serif; font-size: 14px; 
-        color: #ffcc00; /* 金色文字 */
-        margin-bottom: 10px;
+        background: rgba(255, 255, 255, 0.2); 
+        border: 1px solid rgba(255, 255, 255, 0.5);
+        border-radius: 30px; color: #fff; font-size: 14px;
     }
     
     .cam-box {
         position: absolute; bottom: 20px; right: 20px;
         width: 120px; height: 90px; border-radius: 8px; overflow: hidden;
-        border: 2px solid rgba(255,255,255,0.2); z-index: 10; background: #000;
+        border: 2px solid white; z-index: 10; background: #000;
     }
     #input-video { position: absolute; opacity: 0; pointer-events: none; }
     #output-canvas { width: 100%; height: 100%; transform: scaleX(-1); }
@@ -33,9 +34,9 @@
 
 <div id="tree-container">
     <div class="ui-layer">
-        <div id="status-text" class="status-pill">正在构建 3D 积木树...</div>
-        <div style="margin-top:10px; font-size:12px; color:rgba(255,255,255,0.6);">
-            ✊ 握拳：聚合 | 👌 捏合：抓取红色方块
+        <div id="status-text" class="status-pill">调试模式：如果不显示请按F12</div>
+        <div style="margin-top:10px; font-size:12px; color:white;">
+            ✊ 握拳：聚合 | 👌 捏合：抓取
         </div>
     </div>
 
@@ -52,322 +53,160 @@
 <script src="js/hands.js"></script>
 
 <script>
-    const container = document.getElementById('tree-canvas');
-    const statusText = document.getElementById('status-text');
-    let width = container.clientWidth;
-    let height = container.clientHeight;
+    console.log(">>> [Debug] 脚本开始执行");
 
-    // ================= 1. 初始化场景 (无雾气版) =================
-    const scene = new THREE.Scene();
-    // scene.fog = new THREE.FogExp2(0x000000, 0.0008); // ★ 移除雾气，防止变黑
+    try {
+        const container = document.getElementById('tree-canvas');
+        if (!container) throw new Error("找不到 #tree-canvas 容器");
 
-    const camera = new THREE.PerspectiveCamera(60, width / height, 1, 5000);
-    camera.position.set(0, 50, 800); // 相机放低一点，平视
+        // 1. 尺寸检查
+        let width = container.clientWidth;
+        let height = container.clientHeight;
+        console.log(`>>> [Debug] 容器尺寸: ${width} x ${height}`);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setSize(width, height);
-    renderer.setPixelRatio(window.devicePixelRatio);
-    container.appendChild(renderer.domElement);
+        // 如果尺寸为0，强制给个默认值
+        if (width === 0) width = 800;
+        if (height === 0) height = 600;
 
-    // ★ 灯光系统 (3D物体需要灯光)
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6); // 强环境光
-    scene.add(ambientLight);
-    
-    const dirLight = new THREE.DirectionalLight(0xffddcc, 0.8); // 暖色主光
-    dirLight.position.set(200, 500, 200);
-    scene.add(dirLight);
+        // 2. 初始化场景
+        const scene = new THREE.Scene();
+        // ★ 强制背景为深蓝色。如果你看到蓝色，说明 Three.js 启动成功了！
+        scene.background = new THREE.Color(0x000055); 
 
-    const pointLight = new THREE.PointLight(0xff0000, 1, 500); // 红色点光增加氛围
-    pointLight.position.set(0, 0, 0);
-    scene.add(pointLight);
+        const camera = new THREE.PerspectiveCamera(60, width / height, 1, 5000);
+        camera.position.set(0, 100, 800); // 往后拉远一点
 
-    // ================= 2. 几何粒子系统 =================
-    
-    const PARTICLE_COUNT = 600; // 3D模型比较重，数量稍微减少一点
-    const TREE_HEIGHT = 600;
-    const TREE_BASE_RADIUS = 300;
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(width, height);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        
+        // 清空容器再加入 (防止重复加载导致多个画布堆叠)
+        while(container.firstChild) { container.removeChild(container.firstChild); }
+        container.appendChild(renderer.domElement);
+        console.log(">>> [Debug] Renderer 添加成功");
 
-    // 预定义几种几何体 (Geometry)
-    const geoBox = new THREE.BoxGeometry(1, 1, 1);       // 礼物/方块
-    const geoSphere = new THREE.SphereGeometry(0.6, 16, 16); // 彩球
-    const geoCone = new THREE.ConeGeometry(0.6, 1.5, 16);    // 小树
-    const geoTetra = new THREE.TetrahedronGeometry(0.8);     // 星星/碎片
+        // 3. 创建简单的几何体 (使用 BasicMaterial，不需要灯光也能亮)
+        const particleGroup = new THREE.Group();
+        scene.add(particleGroup);
 
-    // 预定义几种材质颜色 (Material)
-    // 使用 MeshPhongMaterial，这样会有反光立体感
-    function getMat(color) {
-        return new THREE.MeshPhongMaterial({ 
-            color: color, 
-            shininess: 100, 
-            emissive: color, // 自发光一点点，防止太暗
-            emissiveIntensity: 0.3
-        });
-    }
-    
-    const matRed = getMat(0xff3333);   // 红
-    const matGreen = getMat(0x33aa33); // 绿
-    const matGold = getMat(0xffaa00);  // 金
-    const matWhite = getMat(0xffffff); // 白
-    const matBlue = getMat(0x3333ff);  // 蓝
+        const geoBox = new THREE.BoxGeometry(10, 10, 10);
+        // 使用红绿黄三种醒目的颜色
+        const matRed = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+        const matGreen = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+        const matYellow = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+        const mats = [matRed, matGreen, matYellow];
 
-    // 组合池
-    const shapes = [
-        { geo: geoBox, mat: matRed },    // 红礼物
-        { geo: geoBox, mat: matGold },   // 金礼物
-        { geo: geoSphere, mat: matRed }, // 红球
-        { geo: geoSphere, mat: matGold },// 金球
-        { geo: geoSphere, mat: matBlue },// 蓝球
-        { geo: geoCone, mat: matGreen }, // 绿树
-        { geo: geoTetra, mat: matWhite } // 雪花
-    ];
+        const particles = [];
+        const PARTICLE_COUNT = 500;
 
-    const particles = [];
-    const specialParticles = []; // 存几个特殊的用来交互
-    const particleGroup = new THREE.Group();
-    scene.add(particleGroup);
-
-    // 树顶大星星
-    const topStar = new THREE.Mesh(
-        new THREE.OctahedronGeometry(25, 0), 
-        new THREE.MeshBasicMaterial({ color: 0xffff00 }) // 纯色发光
-    );
-    topStar.position.set(0, TREE_HEIGHT/2 + 30, 0);
-    topStar.visible = false;
-    scene.add(topStar);
-
-    // 初始化粒子
-    function initParticles() {
-        for (let i = 0; i < PARTICLE_COUNT; i++) {
-            // 随机选一个形状
-            const shape = shapes[Math.floor(Math.random() * shapes.length)];
+        for(let i=0; i<PARTICLE_COUNT; i++) {
+            const mat = mats[Math.floor(Math.random() * mats.length)];
+            const mesh = new THREE.Mesh(geoBox, mat);
             
-            // 创建 Mesh
-            const mesh = new THREE.Mesh(shape.geo, shape.mat);
+            // 随机散开
+            mesh.position.set(
+                (Math.random() - 0.5) * 1000,
+                (Math.random() - 0.5) * 800,
+                (Math.random() - 0.5) * 600
+            );
             
-            // 随机位置逻辑 (保持之前的算法)
-            // 1. 树形态
-            const y = (Math.random() - 0.5) * TREE_HEIGHT; 
-            const relY = (y + TREE_HEIGHT/2) / TREE_HEIGHT; 
-            const radius = TREE_BASE_RADIUS * (1 - relY) + 20; // +20防止太细
-            const angle = Math.random() * Math.PI * 2 * 8; 
+            // 保存目标位置 (圣诞树形态)
+            const y = (Math.random() - 0.5) * 600;
+            const relY = (y + 300) / 600;
+            const radius = 300 * (1 - relY) + 20;
+            const angle = Math.random() * Math.PI * 2 * 6;
             
-            const targetX = Math.cos(angle) * radius;
-            const targetY = y;
-            const targetZ = Math.sin(angle) * radius;
-
-            // 2. 散开形态
-            const spreadX = (Math.random() - 0.5) * 1500;
-            const spreadY = (Math.random() - 0.5) * 1000;
-            const spreadZ = (Math.random() - 0.5) * 800;
-
-            mesh.position.set(spreadX, spreadY, spreadZ);
-            
-            // 随机大小 (3D物体大小大概在 10~25 之间)
-            const s = Math.random() * 15 + 10;
-            mesh.scale.set(s, s, s);
-            
-            // 随机旋转
-            mesh.rotation.set(Math.random()*3, Math.random()*3, Math.random()*3);
-
-            // 数据绑定
             mesh.userData = {
-                treePos: new THREE.Vector3(targetX, targetY, targetZ),
-                spreadPos: new THREE.Vector3(spreadX, spreadY, spreadZ),
-                baseScale: s,
-                rotSpeed: { x: Math.random()*0.02, y: Math.random()*0.02 }
+                spreadPos: mesh.position.clone(),
+                treePos: new THREE.Vector3(
+                    Math.cos(angle) * radius,
+                    y,
+                    Math.sin(angle) * radius
+                ),
+                scale: Math.random() * 2 + 1
             };
-
+            
             particleGroup.add(mesh);
             particles.push(mesh);
         }
+        console.log(">>> [Debug] 500个粒子创建完毕");
 
-        // ★ 创建几个特殊的“黑卡片”替代品 (用红色大方块代替)
-        // 确保捏合时肯定能看到东西
-        for(let i=0; i<5; i++) {
-            const mesh = new THREE.Mesh(geoBox, matRed);
-            mesh.position.set((Math.random()-0.5)*500, (Math.random()-0.5)*500, 0);
-            mesh.scale.set(30, 30, 5); // 扁平大方块
+        // 4. 状态控制
+        let isTree = false;
+        
+        function toTree() {
+            if(isTree) return;
+            isTree = true;
+            document.getElementById('status-text').innerText = "状态：聚合圣诞树";
+            particles.forEach(p => {
+                new TWEEN.Tween(p.position).to(p.userData.treePos, 1000).easing(TWEEN.Easing.Quadratic.Out).start();
+            });
+        }
+
+        function toSpread() {
+            if(!isTree) return;
+            isTree = false;
+            document.getElementById('status-text').innerText = "状态：自由散开";
+            particles.forEach(p => {
+                new TWEEN.Tween(p.position).to(p.userData.spreadPos, 1000).easing(TWEEN.Easing.Quadratic.Out).start();
+            });
+        }
+
+        // 5. 渲染循环
+        function animate(time) {
+            requestAnimationFrame(animate);
+            TWEEN.update(time);
             
-            mesh.userData = {
-                treePos: new THREE.Vector3(0, (Math.random()-0.5)*400, 200), // 树上显眼位置
-                spreadPos: new THREE.Vector3((Math.random()-0.5)*500, (Math.random()-0.5)*500, 200),
-                baseScale: 30,
-                rotSpeed: { x: 0.01, y: 0.01 },
-                isSpecial: true
-            };
-            particleGroup.add(mesh);
-            specialParticles.push(mesh);
-        }
-    }
-
-    initParticles();
-
-    // ================= 3. 状态控制 =================
-    
-    let currentState = 'spread'; 
-    let isPinching = false;
-    let activeObj = null; 
-
-    function toTreeState() {
-        if (currentState === 'tree') return;
-        currentState = 'tree';
-        statusText.innerText = "🎄 3D 圣诞树";
-        topStar.visible = true;
-
-        [...particles, ...specialParticles].forEach(p => {
-            if (p === activeObj) return; 
-            new TWEEN.Tween(p.position)
-                .to({ x: p.userData.treePos.x, y: p.userData.treePos.y, z: p.userData.treePos.z }, 1500)
-                .easing(TWEEN.Easing.Elastic.Out) // 换个弹性的缓动
-                .start();
-        });
-    }
-
-    function toSpreadState() {
-        if (currentState === 'spread') return;
-        currentState = 'spread';
-        statusText.innerText = "✨ 自由浮动";
-        topStar.visible = false;
-
-        [...particles, ...specialParticles].forEach(p => {
-            if (p === activeObj) return;
-            new TWEEN.Tween(p.position)
-                .to({ x: p.userData.spreadPos.x, y: p.userData.spreadPos.y, z: p.userData.spreadPos.z }, 2000)
-                .easing(TWEEN.Easing.Cubic.Out)
-                .start();
-        });
-    }
-
-    function grabObj() {
-        if (isPinching || specialParticles.length === 0) return;
-        isPinching = true;
-        
-        activeObj = specialParticles[Math.floor(Math.random() * specialParticles.length)];
-        
-        // 移到屏幕中央
-        new TWEEN.Tween(activeObj.position)
-            .to({ x: 0, y: 50, z: 600 }, 800)
-            .easing(TWEEN.Easing.Back.Out)
-            .start();
-
-        // 旋转回正
-        new TWEEN.Tween(activeObj.rotation)
-            .to({ x: 0, y: 0, z: 0 }, 800)
-            .start();
-
-        // 放大
-        new TWEEN.Tween(activeObj.scale)
-            .to({ x: 80, y: 80, z: 10 }, 800) 
-            .easing(TWEEN.Easing.Back.Out)
-            .start();
+            if(isTree) {
+                particleGroup.rotation.y += 0.01;
+            }
             
-        // 变色提示
-        activeObj.material.color.setHex(0xffff00); 
-        statusText.innerText = "🎁 抓取成功！";
-    }
-
-    function releaseObj() {
-        if (!isPinching || !activeObj) return;
-        isPinching = false;
-        
-        activeObj.material.color.setHex(0xff3333); // 恢复红色
-
-        const target = currentState === 'tree' ? activeObj.userData.treePos : activeObj.userData.spreadPos;
-        const scale = activeObj.userData.baseScale;
-
-        new TWEEN.Tween(activeObj.position).to(target, 1000).easing(TWEEN.Easing.Back.Out).start();
-        new TWEEN.Tween(activeObj.scale).to({x: scale, y: scale, z: 5}, 1000).easing(TWEEN.Easing.Back.Out).start();
-        
-        activeObj = null;
-        statusText.innerText = currentState === 'tree' ? "🎄 3D 圣诞树" : "✨ 自由浮动";
-    }
-
-    // ================= 4. MediaPipe =================
-    const videoElement = document.getElementById('input-video');
-    const canvasElement = document.getElementById('output-canvas');
-    const canvasCtx = canvasElement.getContext('2d');
-
-    function onResults(results) {
-        if(statusText.innerText.includes("构建")) {
-             statusText.innerText = "引擎就绪，请伸手";
+            renderer.render(scene, camera);
         }
-        
-        canvasCtx.save();
-        canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-        canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+        animate();
+        console.log(">>> [Debug] 动画循环启动");
 
-        if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-            const landmarks = results.multiHandLandmarks[0];
-            drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: '#00FF00', lineWidth: 2});
-            drawLandmarks(canvasCtx, landmarks, {color: '#FF0000', lineWidth: 1, radius: 2});
+        // 6. MediaPipe 手势
+        const videoElement = document.getElementById('input-video');
+        const canvasElement = document.getElementById('output-canvas');
+        const canvasCtx = canvasElement.getContext('2d');
 
-            const wrist = landmarks[0];
-            const middleTip = landmarks[12];
-            const palmDist = Math.sqrt(Math.pow(middleTip.x - wrist.x, 2) + Math.pow(middleTip.y - wrist.y, 2));
+        function onResults(results) {
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+            
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
+                drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: '#00FF00', lineWidth: 2});
+                drawLandmarks(canvasCtx, landmarks, {color: '#FF0000', lineWidth: 1, radius: 2});
 
-            const thumbTip = landmarks[4];
-            const indexTip = landmarks[8];
-            const pinchDist = Math.sqrt(Math.pow(thumbTip.x - indexTip.x, 2) + Math.pow(thumbTip.y - indexTip.y, 2));
-
-            if (pinchDist < 0.05) { 
-                grabObj();
-            } else {
-                releaseObj();
+                // 简单的握拳检测
+                const wrist = landmarks[0];
+                const middleTip = landmarks[12];
+                // 距离转为相对画布的比例
+                const dist = Math.sqrt(Math.pow(middleTip.x - wrist.x, 2) + Math.pow(middleTip.y - wrist.y, 2));
+                
+                if(dist < 0.2) toTree();
+                else if(dist > 0.35) toSpread();
             }
-
-            if (!isPinching) {
-                if (palmDist < 0.25) {
-                    toTreeState(); 
-                } else if (palmDist > 0.35) {
-                    toSpreadState(); 
-                }
-            }
-        }
-        canvasCtx.restore();
-    }
-
-    const hands = new Hands({locateFile: (file) => {
-        return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
-    }});
-    hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
-    hands.onResults(onResults);
-
-    const cameraUtils = new Camera(videoElement, {
-        onFrame: async () => { await hands.send({image: videoElement}); },
-        width: 320, height: 240
-    });
-    cameraUtils.start();
-
-    // ================= 5. 渲染循环 =================
-    function animate(time) {
-        requestAnimationFrame(animate);
-        TWEEN.update(time); 
-
-        // 整体旋转
-        if (currentState === 'tree' && !isPinching) {
-            particleGroup.rotation.y += 0.005;
-            topStar.rotation.y -= 0.02;
-        } else if (currentState === 'spread') {
-            particleGroup.rotation.y += 0.001;
+            canvasCtx.restore();
         }
 
-        // 让每个小积木自己也转起来，更有动感
-        particles.forEach(p => {
-            p.rotation.x += p.userData.rotSpeed.x;
-            p.rotation.y += p.userData.rotSpeed.y;
+        const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+        hands.setOptions({maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5});
+        hands.onResults(onResults);
+
+        const cameraUtils = new Camera(videoElement, {
+            onFrame: async () => { await hands.send({image: videoElement}); },
+            width: 320, height: 240
         });
+        cameraUtils.start();
+        console.log(">>> [Debug] 摄像头启动指令已发送");
 
-        renderer.render(scene, camera);
+    } catch (e) {
+        console.error(">>> [Fatal Error]", e);
+        document.getElementById('status-text').innerText = "错误: " + e.message;
+        document.getElementById('status-text').style.backgroundColor = "red";
     }
-    animate();
-
-    window.addEventListener('resize', () => {
-        if(!container) return;
-        width = container.clientWidth;
-        height = container.clientHeight;
-        camera.aspect = width / height;
-        camera.updateProjectionMatrix();
-        renderer.setSize(width, height);
-    });
-
 </script>
