@@ -162,14 +162,14 @@
         });
         const sunGlow = new THREE.Sprite(glowMaterial);
         // 初始大小设定
-        sunGlow.scale.set(1200, 1200, 1); 
+        sunGlow.scale.set(600, 600, 1); 
         scene.add(sunGlow);
 
         // ================= 逻辑控制 =================
 
         let elevation = 0.0; 
         let moveState = 0; 
-        const SPEED = 0.0005; 
+        const SPEED = 0.0001; 
 
         function updateSunPosition() {
             if (moveState !== 0) {
@@ -228,7 +228,7 @@
 
             // C. 锁定光晕大小 (解决问题3)
             // 之前会变小很多，现在只做微小的呼吸，几乎不变
-            const baseScale = 1200;
+            const baseScale = 600;
             // 稍微变化一点点 (1200 -> 1000)，保持视觉张力
             const scale = baseScale - (sunProgress * 200); 
             sunGlow.scale.set(scale, scale, 1);
