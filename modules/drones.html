@@ -1,6 +1,7 @@
 <style>
     /* === 整体布局 === */
     #drone-app {
+        position: relative; /* 关键：让弹窗基于这个容器定位 */
         display: flex;
         width: 100%;
         height: 600px;
@@ -20,15 +21,17 @@
     }
     #three-canvas-drone { width: 100%; height: 100%; display: block; }
     
-    /* 摄像头预览 & 状态 */
     .drone-overlay {
-        position: absolute; top: 20px; left: 20px; pointer-events: none;
+        position: absolute; top: 20px; left: 20px; pointer-events: none; z-index: 10;
     }
     .status-tag {
         background: rgba(0, 255, 255, 0.1); border: 1px solid cyan;
         color: cyan; padding: 5px 10px; border-radius: 4px;
         font-size: 14px; text-shadow: 0 0 5px cyan; margin-bottom: 5px;
+        transition: all 0.3s;
     }
+    .gesture-hint { font-size:12px; color:#888; margin-top:5px; background: rgba(0,0,0,0.5); padding: 5px; border-radius: 4px;}
+
     .cam-preview-box {
         position: absolute; bottom: 10px; left: 10px;
         width: 100px; height: 75px; background: #000;
@@ -45,94 +48,86 @@
         display: flex;
         flex-direction: column;
         user-select: none;
+        transition: opacity 0.3s;
+    }
+    /* 锁定状态样式 */
+    #controls-panel.ui-locked {
+        opacity: 0.5;
+        pointer-events: none;
+        filter: grayscale(1);
     }
 
-    /* 1. 全局设置栏 */
-    .panel-section {
-        padding: 15px;
-        border-bottom: 1px solid #333;
-    }
+    .panel-section { padding: 15px; border-bottom: 1px solid #333; }
     .panel-title { font-size: 14px; color: #888; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px; }
-    
     .input-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
     .input-row label { font-size: 12px; }
     input[type="number"] { width: 50px; background: #333; border: none; color: white; padding: 4px; border-radius: 3px; }
     input[type="checkbox"] { accent-color: cyan; }
 
-    /* 2. 积木时间轴 (核心) */
-    #timeline-container {
-        flex: 1;
-        overflow-y: auto;
-        padding: 15px;
-        background: #151515;
-    }
+    /* 积木时间轴 */
+    #timeline-container { flex: 1; overflow-y: auto; padding: 15px; background: #151515; }
     .timeline-layer {
-        background: #252525;
-        border-radius: 6px;
-        margin-bottom: 10px;
-        padding: 8px;
-        border: 1px solid #333;
-        display: flex;
-        flex-wrap: wrap;
-        gap: 5px;
-        align-items: center;
-        min-height: 40px;
-        position: relative;
+        background: #252525; border-radius: 6px; margin-bottom: 10px; padding: 8px;
+        border: 1px solid #333; display: flex; flex-wrap: wrap; gap: 5px;
+        align-items: center; min-height: 40px; position: relative;
     }
     .layer-index { 
-        position: absolute; left: -10px; top: 50%; transform: translateY(-50%); 
+        position: absolute; left: -8px; top: 50%; transform: translateY(-50%); 
         font-size: 10px; color: #555; 
     }
-    /* 积木块 */
     .block-item {
-        background: #3a3a3a;
-        padding: 5px 10px;
-        border-radius: 4px;
-        font-size: 12px;
-        cursor: pointer;
-        border: 1px solid #555;
-        display: flex;
-        align-items: center;
-        gap: 5px;
+        background: #3a3a3a; padding: 5px 10px; border-radius: 4px; font-size: 12px;
+        cursor: pointer; border: 1px solid #555; display: flex; align-items: center; gap: 5px;
     }
     .block-item.configured { border-color: cyan; color: cyan; }
-    .block-color-dot { width: 8px; height: 8px; border-radius: 50%; background: #fff; }
+    .block-color-preview { width: 12px; height: 12px; border-radius: 2px; background: #666; border: 1px solid #fff; }
     
     .add-btn {
         width: 24px; height: 24px; border-radius: 4px;
-        border: 1px dashed #666; color: #666;
-        display: flex; align-items: center; justify-content: center;
+        border: 1px dashed #666; color: #666; display: flex; align-items: center; justify-content: center;
         cursor: pointer; transition: 0.2s;
     }
     .add-btn:hover { border-color: cyan; color: cyan; }
 
-    /* 弹出配置框 */
-    #config-popup {
-        display: none;
-        position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-        width: 260px; background: #2a2a2a; border: 1px solid #444;
-        box-shadow: 0 10px 40px rgba(0,0,0,0.8);
-        z-index: 100; border-radius: 8px; padding: 15px;
-    }
-    .popup-row { margin-bottom: 12px; }
-    select, input[type="text"] { width: 100%; background: #111; border: 1px solid #444; color: white; padding: 6px; border-radius: 4px; margin-top: 4px;}
-    .popup-btns { display: flex; justify-content: flex-end; gap: 10px; margin-top: 15px; }
-    .btn { padding: 5px 12px; border-radius: 4px; border: none; cursor: pointer; font-size: 12px; }
-    .btn-cancel { background: #444; color: #ccc; }
-    .btn-confirm { background: cyan; color: #000; font-weight: bold; }
-
-    /* 遮罩 */
+    /* === 弹窗 (Popup) === */
+    /* 遮罩：只覆盖 drone-app */
     #popup-overlay {
         display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-        background: rgba(0,0,0,0.5); z-index: 90;
+        background: rgba(0,0,0,0.7); z-index: 90; backdrop-filter: blur(2px);
     }
+    /* 弹窗主体 */
+    #config-popup {
+        display: none;
+        position: absolute; 
+        top: 50%; left: 50%; 
+        transform: translate(-50%, -50%); /* 完美居中 */
+        width: 300px; 
+        background: #252525; 
+        border: 1px solid #444;
+        box-shadow: 0 20px 50px rgba(0,0,0,0.9);
+        z-index: 100; border-radius: 12px; padding: 20px;
+    }
+    .popup-row { margin-bottom: 15px; }
+    .popup-row label { display: block; font-size: 12px; color: #aaa; margin-bottom: 5px; }
+    select, input[type="text"] { width: 100%; background: #111; border: 1px solid #444; color: white; padding: 8px; border-radius: 4px; box-sizing: border-box; }
+    
+    /* 颜色管理器 */
+    .color-manager { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; background: #1a1a1a; padding: 5px; border-radius: 4px; min-height: 30px;}
+    .color-chip { width: 24px; height: 24px; border-radius: 4px; border: 1px solid #555; cursor: pointer; position: relative; }
+    .color-chip:hover::after { content: 'x'; position: absolute; top:-5px; right:-5px; font-size:10px; background:red; color:white; width:12px; height:12px; border-radius:50%; display:flex; justify-content:center; align-items:center; }
+    .btn-add-color { width: 24px; height: 24px; border: 1px dashed #666; color: #666; display: flex; justify-content: center; align-items: center; cursor: pointer; border-radius: 4px; }
+    
+    .popup-btns { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; border-top: 1px solid #333; padding-top: 15px; }
+    .btn { padding: 6px 16px; border-radius: 4px; border: none; cursor: pointer; font-size: 12px; }
+    .btn-cancel { background: #333; color: #ccc; }
+    .btn-confirm { background: cyan; color: #000; font-weight: bold; }
 </style>
 
 <div id="drone-app">
     <div id="stage-container">
         <div class="drone-overlay">
-            <div id="sys-status" class="status-tag">System Ready</div>
-            <div id="gesture-hint" style="font-size:12px; color:#888; margin-top:5px;">
+            <div id="sys-status" class="status-tag">System Ready - 等待设置</div>
+            <div class="gesture-hint">
                 👋 抬手: 起飞 | ⬅️ 左挥: 上一幕 | ➡️ 右挥: 下一幕 | 👇 下挥: 降落
             </div>
         </div>
@@ -150,7 +145,7 @@
             </div>
             <div class="input-row">
                 <label>飞行速度</label>
-                <input type="number" id="inp-speed" value="5" min="1" max="20">
+                <input type="number" id="inp-speed" value="8" min="1" max="20">
             </div>
             <div class="input-row">
                 <label>自动变换</label>
@@ -162,50 +157,59 @@
             </div>
         </div>
 
-        <div class="panel-title" style="padding: 0 15px; margin-top:15px;">编排时间轴</div>
+        <div class="panel-title" style="padding: 15px 15px 0;">编排时间轴</div>
         <div id="timeline-container">
             </div>
     </div>
 
     <div id="popup-overlay"></div>
     <div id="config-popup">
-        <div class="panel-title">积木配置</div>
+        <h3 style="margin:0 0 15px 0; color:white; font-size:16px;">积木配置</h3>
+        
         <div class="popup-row">
-            <label>类型</label>
+            <label>图案类型</label>
             <select id="cfg-type">
-                <option value="shape">预设图形</option>
-                <option value="text">文字</option>
+                <option value="shape">预设几何体</option>
+                <option value="text">文字生成</option>
             </select>
         </div>
         
         <div class="popup-row" id="group-shape">
-            <label>图形选择</label>
+            <label>选择形状</label>
             <select id="cfg-shape">
-                <option value="cube">立方体 (Cube)</option>
-                <option value="sphere">球体 (Sphere)</option>
-                <option value="heart">爱心 (Heart)</option>
-                <option value="star">五角星 (Star)</option>
-                <option value="tree">圣诞树 (Tree)</option>
-                <option value="helix">双螺旋 (Helix)</option>
+                <option value="heart">❤️ 爱心 (Heart)</option>
+                <option value="star">⭐ 五角星 (Star)</option>
+                <option value="tree">🌲 圣诞树 (Tree)</option>
+                <option value="cube">🧊 立方体 (Cube)</option>
+                <option value="sphere">🔮 球体 (Sphere)</option>
+                <option value="helix">🧬 双螺旋 (Helix)</option>
             </select>
         </div>
 
         <div class="popup-row" id="group-text" style="display:none">
-            <label>输入文字 (建议1-2字)</label>
+            <label>输入文字 (建议1-2字，支持中文)</label>
             <input type="text" id="cfg-text-val" placeholder="Hi">
         </div>
 
         <div class="popup-row">
-            <label>颜色模式</label>
-            <div style="display:flex; align-items:center; gap:10px; margin-top:5px;">
-                <input type="color" id="cfg-color" value="#00ffff">
-                <label style="font-size:11px"><input type="checkbox" id="cfg-rainbow"> 彩虹渐变</label>
+            <label>颜色配置 (点击 + 添加多色)</label>
+            <div class="color-manager" id="color-list-container">
+                <div class="btn-add-color" onclick="addColorPicker()">+</div>
             </div>
+        </div>
+
+        <div class="popup-row">
+            <label>颜色效果</label>
+            <select id="cfg-color-mode">
+                <option value="solid">无效果 (交替分配)</option>
+                <option value="gradient">线性渐变 (左->右)</option>
+                <option value="breathing">呼吸闪烁 (动态循环)</option>
+            </select>
         </div>
 
         <div class="popup-btns">
             <button class="btn btn-cancel" id="btn-cancel">取消</button>
-            <button class="btn btn-confirm" id="btn-ok">确定</button>
+            <button class="btn btn-confirm" id="btn-ok">确定保存</button>
         </div>
     </div>
 </div>
@@ -220,38 +224,41 @@
 (function() {
     // ================= 1. 核心数据结构 =================
     const APP = {
-        drones: [],         // 存放 {mesh, currentPos, targetPos, speed, delay}
-        timeline: [],       // 存放每一层的数据 [{blocks: [...]}, ...]
+        drones: [],         // {mesh, currentPos, targetPos, baseColors:[], colorMode, colorOffset}
+        timeline: [],       // [{blocks: [...]}, ...]
         currentStage: -1,   // -1: 地面, 0~N: 表演层级
-        state: 'LANDED',    // LANDED, TAKEOFF, FLYING, LANDING
+        state: 'LANDED',    // LANDED, TAKEOFF, HOVERING, TRANSITION, LANDING
         config: {
             count: 400,
-            speed: 0.05,
+            speed: 0.08,
             auto: false,
             interval: 8000
         },
         autoTimer: null,
-        gestureCooldown: 0
+        gestureCooldown: 0,
+        tempColors: ['#ff0000'] // 弹窗临时的颜色存储
     };
 
     // ================= 2. UI 逻辑与积木系统 =================
     const timelineContainer = document.getElementById('timeline-container');
     const popup = document.getElementById('config-popup');
     const overlay = document.getElementById('popup-overlay');
-    
-    let currentEditingBlock = null; // 当前正在编辑的积木 DOM 引用
+    const controlsPanel = document.getElementById('controls-panel');
+    let currentEditingBlock = null; 
 
-    // 初始化时间轴：添加第一层 + 空层
-    function initTimeline() {
-        addLayer();
+    // 锁定/解锁 UI
+    function setUILocked(locked) {
+        if(locked) controlsPanel.classList.add('ui-locked');
+        else controlsPanel.classList.remove('ui-locked');
     }
+
+    function initTimeline() { addLayer(); }
 
     function addLayer() {
         const div = document.createElement('div');
         div.className = 'timeline-layer';
         div.innerHTML = `<span class="layer-index">${APP.timeline.length + 1}</span>`;
         
-        // 加号按钮
         const addBtn = document.createElement('div');
         addBtn.className = 'add-btn';
         addBtn.innerHTML = '+';
@@ -259,36 +266,102 @@
         
         div.appendChild(addBtn);
         timelineContainer.appendChild(div);
-        
-        // 数据层同步
         APP.timeline.push({ blocks: [] });
     }
 
     function addBlockToLayer(layerDom, btnDom) {
         const block = document.createElement('div');
         block.className = 'block-item';
-        block.innerHTML = `<div class="block-color-dot"></div><span>未设置</span>`;
+        block.innerHTML = `<div class="block-color-preview"></div><span>未设置</span>`;
+        block.dataset.configured = "false";
         
-        // 点击积木打开配置
-        block.onclick = () => openConfig(block, layerDom);
+        block.onclick = () => {
+            // 只有在地面的状态下才允许编辑，防止逻辑冲突
+            if(APP.state !== 'LANDED') {
+                alert("请先降落无人机再修改设置！");
+                return;
+            }
+            openConfig(block, layerDom);
+        };
         
-        // 插入到加号前面
         layerDom.insertBefore(block, btnDom);
-
-        // 如果这是最后一层，自动补一个新的空层
         if (layerDom === timelineContainer.lastElementChild) {
             addLayer();
         }
+    }
+
+    // --- 颜色管理逻辑 ---
+    window.addColorPicker = function() {
+        APP.tempColors.push('#00ffff');
+        renderColorList();
+    }
+    window.removeColor = function(index) {
+        if(APP.tempColors.length > 1) {
+            APP.tempColors.splice(index, 1);
+            renderColorList();
+        }
+    }
+    window.updateColor = function(index, val) {
+        APP.tempColors[index] = val;
+        renderColorList();
+    }
+    
+    function renderColorList() {
+        const container = document.getElementById('color-list-container');
+        // 保留最后一个 + 按钮
+        const addBtn = container.lastElementChild;
+        container.innerHTML = '';
+        
+        APP.tempColors.forEach((c, i) => {
+            const chip = document.createElement('div');
+            chip.className = 'color-chip';
+            chip.style.backgroundColor = c;
+            
+            // 隐藏的 input color
+            const input = document.createElement('input');
+            input.type = 'color';
+            input.value = c;
+            input.style.opacity = 0;
+            input.style.position = 'absolute';
+            input.style.width = '100%'; input.style.height = '100%'; input.style.cursor = 'pointer';
+            input.oninput = (e) => {
+                chip.style.backgroundColor = e.target.value;
+                APP.tempColors[i] = e.target.value;
+            };
+
+            // 右键或点击特定区域删除? 这里简化为：hover 显示 x，点击 x 删除
+            // 为了简单，我们绑定点击事件：如果是 chip 本体打开颜色，如果是伪元素(通过坐标判断太麻烦)，加个独立删除钮
+            // 简化交互：双击删除，单击改色
+            chip.title = "单击改色，双击删除";
+            chip.ondblclick = () => removeColor(i);
+
+            chip.appendChild(input);
+            container.appendChild(chip);
+        });
+        container.appendChild(addBtn);
     }
 
     // --- 弹窗逻辑 ---
     function openConfig(blockDom, layerDom) {
         currentEditingBlock = { dom: blockDom, layerIndex: Array.from(timelineContainer.children).indexOf(layerDom) };
         overlay.style.display = 'block';
-        popup.style.display = 'block';
+        popup.style.display = 'block'; // 居中显示
+
+        // 恢复已有配置
+        if (blockDom.dataset.config) {
+            const cfg = JSON.parse(blockDom.dataset.config);
+            document.getElementById('cfg-type').value = cfg.type;
+            document.getElementById('cfg-shape').value = cfg.shape;
+            document.getElementById('cfg-text-val').value = cfg.text;
+            document.getElementById('cfg-color-mode').value = cfg.colorMode || 'solid';
+            APP.tempColors = cfg.colors || ['#ff0000'];
+        } else {
+            APP.tempColors = ['#00ffff'];
+        }
         
-        // 读取已有数据（如果有）
-        // 这里简化，每次打开重置或读取 DOM 上的 data-attribute
+        // 触发一次显示切换
+        document.getElementById('cfg-type').dispatchEvent(new Event('change'));
+        renderColorList();
     }
 
     document.getElementById('btn-cancel').onclick = closePopup;
@@ -298,7 +371,7 @@
         document.getElementById('group-text').style.display = e.target.value === 'text' ? 'block' : 'none';
     };
     
-    // 全局设置监听
+    // 全局设置
     document.getElementById('inp-count').onchange = e => APP.config.count = parseInt(e.target.value);
     document.getElementById('inp-speed').onchange = e => APP.config.speed = parseInt(e.target.value) / 100;
     document.getElementById('inp-auto').onchange = e => {
@@ -319,68 +392,48 @@
         const type = document.getElementById('cfg-type').value;
         const shape = document.getElementById('cfg-shape').value;
         const text = document.getElementById('cfg-text-val').value;
-        const color = document.getElementById('cfg-color').value;
-        const rainbow = document.getElementById('cfg-rainbow').checked;
+        const colorMode = document.getElementById('cfg-color-mode').value;
+        
+        // 1. 构建配置对象
+        const config = {
+            type, shape, text, colorMode,
+            colors: [...APP.tempColors], // 复制副本
+            configured: true
+        };
 
-        // 1. 更新 UI
+        // 2. 更新 DOM 样式
         const label = type === 'shape' ? shape : (text || 'Text');
         currentEditingBlock.dom.querySelector('span').innerText = label;
-        currentEditingBlock.dom.querySelector('.block-color-dot').style.background = rainbow ? 'linear-gradient(45deg, red, blue)' : color;
+        // 预览色块：如果是多色，显示渐变
+        const preview = currentEditingBlock.dom.querySelector('.block-color-preview');
+        if (config.colors.length > 1) {
+            preview.style.background = `linear-gradient(45deg, ${config.colors.join(',')})`;
+        } else {
+            preview.style.background = config.colors[0];
+        }
+        
         currentEditingBlock.dom.classList.add('configured');
+        currentEditingBlock.dom.dataset.configured = "true";
+        currentEditingBlock.dom.dataset.config = JSON.stringify(config);
 
-        // 2. 保存数据到结构中
-        // 找到这一层对应的数据
-        const layerData = APP.timeline[currentEditingBlock.layerIndex];
-        // 找到这个积木在层里的 index (除去 span index)
-        // 简单处理：把所有积木数据全清空，重新遍历 DOM 生成数据（防止顺序错乱）
-        rebuildLayerData(currentEditingBlock.layerIndex);
+        // 3. 重建数据层
+        rebuildTimelineData();
 
         closePopup();
     }
 
-    function rebuildLayerData(layerIndex) {
-        const layerDom = timelineContainer.children[layerIndex];
-        const blocks = layerDom.querySelectorAll('.block-item');
-        const blockData = [];
-        
-        blocks.forEach(b => {
-            if (!b.classList.contains('configured')) return;
-            const label = b.querySelector('span').innerText;
-            // 为了简化，我们只从 DOM 状态反推（实际开发应在 openConfig 时把数据存变量）
-            // 这里为了演示，假设刚刚保存的就是现在的值，实际项目应该用 object 绑定
-            blockData.push({
-                type: document.getElementById('cfg-type').value, // 注意：这里有个 bug，如果编辑别的时候这值会变，这里简化
-                value: label, // 简单存 label
-                color: b.querySelector('.block-color-dot').style.background.includes('gradient') ? 'rainbow' :  rgbToHex(b.querySelector('.block-color-dot').style.backgroundColor)
+    function rebuildTimelineData() {
+        APP.timeline = [];
+        const layers = timelineContainer.querySelectorAll('.timeline-layer');
+        layers.forEach(layer => {
+            const blocksData = [];
+            layer.querySelectorAll('.block-item').forEach(b => {
+                if(b.dataset.configured === "true" && b.dataset.config) {
+                    blocksData.push(JSON.parse(b.dataset.config));
+                }
             });
+            APP.timeline.push({ blocks: blocksData });
         });
-        
-        // 修正 bug：真正的数据应该存在 DOM 属性上
-        // 这里做一个简单的模拟数据生成器
-        // 实际每次 saveConfig 应该把 config 对象 attach 到 dom 上
-        const activeConfig = {
-            type: document.getElementById('cfg-type').value,
-            shape: document.getElementById('cfg-shape').value,
-            text: document.getElementById('cfg-text-val').value,
-            color: document.getElementById('cfg-color').value,
-            rainbow: document.getElementById('cfg-rainbow').checked
-        };
-        currentEditingBlock.dom.dataset.config = JSON.stringify(activeConfig);
-        
-        // 真正的 rebuild
-        const finalBlocks = [];
-        blocks.forEach(b => {
-            if(b.dataset.config) finalBlocks.push(JSON.parse(b.dataset.config));
-        });
-        APP.timeline[layerIndex].blocks = finalBlocks;
-    }
-
-    function rgbToHex(rgb) {
-        // 辅助函数，浏览器返回的是 rgb(r, g, b)
-        if(!rgb) return '#ffffff';
-        if(rgb.startsWith('#')) return rgb;
-        // 简单处理
-        return '#00ffff'; 
     }
 
     initTimeline();
@@ -402,27 +455,20 @@
     renderer.setPixelRatio(window.devicePixelRatio);
     container.appendChild(renderer.domElement);
 
-    // 地面网格
     const gridHelper = new THREE.GridHelper(400, 40, 0x333333, 0x111111);
     scene.add(gridHelper);
 
-    // 无人机生成
-    const droneGeo = new THREE.SphereGeometry(1.5, 8, 8); // 低模球体
-    const dummy = new THREE.Object3D();
+    const droneGeo = new THREE.SphereGeometry(1.5, 8, 8); 
 
     function initDrones() {
-        // 清理旧的
         APP.drones.forEach(d => scene.remove(d.mesh));
         APP.drones = [];
-
         const count = APP.config.count;
         const cols = Math.floor(Math.sqrt(count));
         
         for(let i=0; i<count; i++) {
             const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
             const mesh = new THREE.Mesh(droneGeo, material);
-            
-            // 初始停机坪位置
             const row = Math.floor(i / cols);
             const col = i % cols;
             const x = (col - cols/2) * 5;
@@ -435,24 +481,21 @@
                 mesh: mesh,
                 homePos: new THREE.Vector3(x, 0.5, z),
                 targetPos: new THREE.Vector3(x, 0.5, z),
-                color: new THREE.Color(1,1,1),
-                delay: 0, // 起飞延迟
-                active: false // 是否在当前表演中被用到
+                baseColors: [new THREE.Color(1,1,1)], // 存储 THREE.Color 对象
+                colorMode: 'solid',
+                delay: 0
             });
         }
     }
-    
-    // 初始化一次
     initDrones();
 
-    // ================= 4. 队形计算引擎 (Formation Engine) =================
+    // ================= 4. 队形与颜色计算 =================
     
-    // 工具：从文本获取点阵
     function getTextPoints(text, count) {
         const canvas = document.createElement('canvas');
         canvas.width = 100; canvas.height = 100;
         const ctx = canvas.getContext('2d');
-        ctx.font = 'bold 80px Arial';
+        ctx.font = 'bold 70px "Microsoft YaHei"'; // 支持中文
         ctx.fillStyle = 'white';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
@@ -460,10 +503,9 @@
         
         const imageData = ctx.getImageData(0,0,100,100);
         const points = [];
-        for(let y=0; y<100; y+=4) { // 采样步长
-            for(let x=0; x<100; x+=4) {
+        for(let y=0; y<100; y+=3) { // 密度调整
+            for(let x=0; x<100; x+=3) {
                 if(imageData.data[(y*100+x)*4] > 128) {
-                    // 映射到 3D 空间: x -> x, y -> y (上下翻转)
                     points.push(new THREE.Vector3((x-50)*3, (100-y)*2 + 20, 0));
                 }
             }
@@ -471,176 +513,176 @@
         return points;
     }
 
-    // 工具：生成形状点
     function getShapePoints(shape, count) {
         const points = [];
         for(let i=0; i<count; i++) {
             const t = i / count;
             let x, y, z;
-            
             if (shape === 'sphere') {
                 const phi = Math.acos( -1 + ( 2 * i ) / count );
                 const theta = Math.sqrt( count * Math.PI ) * phi;
-                const r = 60;
-                x = r * Math.cos( theta ) * Math.sin( phi );
-                y = r * Math.sin( theta ) * Math.sin( phi ) + 80;
-                z = r * Math.cos( phi );
+                x = 60 * Math.cos(theta) * Math.sin(phi);
+                y = 60 * Math.sin(theta) * Math.sin(phi) + 80;
+                z = 60 * Math.cos(phi);
             } else if (shape === 'heart') {
-                // 心形公式
-                const r = 4; // 半径系数
-                // t 0->2PI
                 const angle = t * Math.PI * 2; 
-                // 这是一个 2D 心形，我们需要填充内部或者做 3D 轮廓
-                // 简单起见，做个 2D 轮廓
-                x = 16 * Math.pow(Math.sin(angle), 3) * r;
-                y = (13 * Math.cos(angle) - 5 * Math.cos(2*angle) - 2 * Math.cos(3*angle) - Math.cos(4*angle)) * r + 80;
-                z = 0;
-            } else if (shape === 'cube') {
-                 // 随机填充立方体
+                x = 16 * Math.pow(Math.sin(angle), 3) * 4;
+                y = (13 * Math.cos(angle) - 5 * Math.cos(2*angle) - 2 * Math.cos(3*angle) - Math.cos(4*angle)) * 4 + 80;
+                z = (Math.random()-0.5) * 10; // 给一点厚度
+            } else if (shape === 'tree') {
+                // 简单的圆锥螺旋
+                const h = t * 100; // 高度 0-100
+                const r = (100 - h) * 0.4; // 半径随高度减小
+                const angle = t * 30;
+                x = Math.cos(angle) * r;
+                y = h + 20;
+                z = Math.sin(angle) * r;
+            } else { // Cube/Star/Default
                  const s = 80;
                  x = (Math.random() - 0.5) * s;
                  y = (Math.random() - 0.5) * s + 80;
                  z = (Math.random() - 0.5) * s;
-            } else {
-                 // 默认圆形
-                 const angle = t * Math.PI * 2;
-                 x = Math.cos(angle) * 50;
-                 y = Math.sin(angle) * 50 + 80;
-                 z = 0;
             }
             points.push(new THREE.Vector3(x, y, z));
         }
         return points;
     }
 
-    // 核心：计算下一帧所有飞机目标
     function calculateStageTargets(stageIndex) {
-        // 1. 获取当前层的数据
-        if (stageIndex >= APP.timeline.length) return;
+        if (stageIndex >= APP.timeline.length) return false;
         
-        // 过滤掉没配置的 block (timeline 里最后一行可能是空的或者包含未配置的)
         const layerData = APP.timeline[stageIndex];
-        const blocks = layerData ? layerData.blocks : [];
-        if (blocks.length === 0) return;
-
-        // 2. 分配无人机
-        const dronesPerBlock = Math.floor(APP.drones.length / blocks.length);
+        // 过滤掉未配置的积木 (Fix Bug #4)
+        const validBlocks = layerData ? layerData.blocks.filter(b => b.configured) : [];
         
+        if (validBlocks.length === 0) return false; // 这一轮是空的，不执行
+
+        const dronesPerBlock = Math.floor(APP.drones.length / validBlocks.length);
         let droneIdx = 0;
         
-        blocks.forEach(block => {
-            let points = [];
-            // 生成足够的点来覆盖分配给该积木的无人机数量
-            // 如果点不够，就循环使用；点多了就丢弃
-            const targetCount = dronesPerBlock; 
+        validBlocks.forEach((block, blockIdx) => {
+            let points = block.type === 'shape' ? 
+                         getShapePoints(block.shape, dronesPerBlock) : 
+                         getTextPoints(block.text || '?', dronesPerBlock);
             
-            if (block.type === 'shape') {
-                // 形状算法生成 (简单随机分布在形状表面或体积内)
-                // 这里为了演示，我们生成大量随机点，然后取前 N 个
-                // 真正的算法可以更复杂
-                points = getShapePoints(block.shape, targetCount);
-            } else {
-                points = getTextPoints(block.text || block.value, targetCount);
-            }
-            
-            // 如果生成的点少于无人机数量（比如文字点很少），循环填充
-            if (points.length < targetCount && points.length > 0) {
-                const originalLen = points.length;
-                for(let k=0; k < targetCount - originalLen; k++) {
-                    points.push(points[k % originalLen].clone());
-                }
+            // 点数补全或截断
+            if (points.length === 0) points.push(new THREE.Vector3(0,50,0));
+            const targetCount = dronesPerBlock;
+            while(points.length < targetCount) {
+                 points.push(points[Math.floor(Math.random()*points.length)].clone());
             }
 
-            // 3. 设置目标
+            // 分配
             for (let i = 0; i < targetCount; i++) {
                 if (droneIdx >= APP.drones.length) break;
                 
                 const d = APP.drones[droneIdx];
-                const p = points[i] || new THREE.Vector3(0,100,0); // fallback
+                const p = points[i];
                 
-                // 设置偏移 (如果这一层有多个积木，我们可以把它们左右排开)
-                // 这里简化：全部重叠在中心，或者你可以加 x offset
-                // 简单 offset:
-                const offsetX = (blocks.length > 1) ? (i % blocks.length - (blocks.length-1)/2) * 60 : 0;
-                
+                // 偏移 (如果多个积木)
+                const offsetX = (validBlocks.length > 1) ? (blockIdx - (validBlocks.length-1)/2) * 80 : 0;
                 d.targetPos.set(p.x + offsetX, p.y, p.z);
                 
-                // 设置颜色
-                if (block.rainbow) {
-                    d.mesh.material.color.setHSL(i/targetCount, 1.0, 0.5);
+                // --- 颜色分配 (Fix Bug #3) ---
+                d.colorMode = block.colorMode;
+                d.baseColors = block.colors.map(c => new THREE.Color(c));
+                
+                if (block.colorMode === 'gradient') {
+                    // 渐变：根据 i/total 混合
+                    const ratio = i / targetCount;
+                    // 简单线性插值 (只取头尾颜色，如果多个颜色需要分段，这里简化为在所有颜色间插值)
+                    // 简化实现：取两个颜色 lerp
+                    const c1 = d.baseColors[0];
+                    const c2 = d.baseColors[d.baseColors.length - 1];
+                    d.mesh.material.color.copy(c1).lerp(c2, ratio);
+                } else if (block.colorMode === 'breathing') {
+                    // 呼吸模式：存下所有颜色，update 里算
+                    d.mesh.material.color.copy(d.baseColors[0]); // 初始颜色
                 } else {
-                    d.mesh.material.color.set(block.color);
+                    // Solid / Alternating
+                    const c = d.baseColors[i % d.baseColors.length];
+                    d.mesh.material.color.copy(c);
                 }
                 
-                d.active = true;
                 droneIdx++;
             }
         });
 
-        // 剩下的无人机让它回家或者隐藏 (飞到地下)
+        // 多余的飞机回家
         for (let j = droneIdx; j < APP.drones.length; j++) {
              APP.drones[j].targetPos.copy(APP.drones[j].homePos);
-             APP.drones[j].mesh.material.color.setHex(0x333333);
+             APP.drones[j].mesh.material.color.setHex(0x222222);
         }
+        
+        return true;
     }
 
     // ================= 5. 动画与手势控制 =================
 
-    // 状态切换函数
+    function updateStatus(msg, type='normal') {
+        const el = document.getElementById('sys-status');
+        el.innerText = msg;
+        el.style.color = type === 'error' ? 'red' : (type === 'success' ? '#00ff00' : 'cyan');
+        el.style.borderColor = el.style.color;
+    }
+
     function switchState(action) {
-        const statusDiv = document.getElementById('sys-status');
-        
         if (action === 'TAKEOFF') {
-            if (APP.timeline[0].blocks.length === 0) {
-                statusDiv.innerText = "❌ 错误: 第1层未设置积木";
-                statusDiv.style.color = "red";
+            if (APP.timeline.length === 0 || !APP.timeline[0].blocks.some(b => b.configured)) {
+                updateStatus("⚠️ 第1层未设置有效积木", 'error');
                 return;
             }
             APP.state = 'TAKEOFF';
             APP.currentStage = 0;
-            statusDiv.innerText = "🚀 起飞中...";
+            updateStatus("🚀 起飞中...", 'cyan');
+            setUILocked(true); // 锁定 UI (Fix Bug #5)
             
-            // 计算第一帧目标
-            calculateStageTargets(0);
-            
-            // 设置起飞延迟（赛车起步感）
-            APP.drones.forEach((d, i) => {
-                // 简单的波浪起飞
-                d.delay = i * 0.005; // 每个差 5ms
-            });
-
+            if(calculateStageTargets(0)) {
+                APP.drones.forEach((d, i) => d.delay = i * 0.005);
+            }
             if(APP.config.auto) startAutoPlay();
 
         } else if (action === 'NEXT') {
-            if (APP.currentStage < APP.timeline.length - 2) { // -2 因为最后一层是空的UI占位
-                APP.currentStage++;
+            let nextStage = APP.currentStage + 1;
+            // 找下一个有内容的层
+            while(nextStage < APP.timeline.length && 
+                  (!APP.timeline[nextStage].blocks || APP.timeline[nextStage].blocks.length === 0)) {
+                nextStage++;
+            }
+            
+            if (nextStage < APP.timeline.length) {
+                APP.currentStage = nextStage;
                 APP.state = 'TRANSITION';
-                statusDiv.innerText = `变换: 第 ${APP.currentStage+1} 幕`;
-                calculateStageTargets(APP.currentStage);
-                // 变换时一起动，无延迟
-                APP.drones.forEach(d => d.delay = 0);
+                updateStatus(`变换: 第 ${APP.currentStage+1} 幕`);
+                
+                // 如果这一层是未设置的，calculateStageTargets 会返回 false，此时我们保持上一状态
+                if(calculateStageTargets(APP.currentStage)){
+                    APP.drones.forEach(d => d.delay = 0);
+                } else {
+                    updateStatus(`第 ${APP.currentStage+1} 幕为空`, 'error');
+                }
             } else {
-                statusDiv.innerText = "已是最后一幕";
+                updateStatus("已是最后一幕");
             }
 
         } else if (action === 'PREV') {
             if (APP.currentStage > 0) {
                 APP.currentStage--;
                 APP.state = 'TRANSITION';
-                statusDiv.innerText = `变换: 第 ${APP.currentStage+1} 幕`;
+                updateStatus(`变换: 第 ${APP.currentStage+1} 幕`);
                 calculateStageTargets(APP.currentStage);
                 APP.drones.forEach(d => d.delay = 0);
             }
 
         } else if (action === 'LAND') {
             APP.state = 'LANDING';
-            statusDiv.innerText = "🛬 降落中...";
+            updateStatus("🛬 降落中...");
             APP.drones.forEach((d, i) => {
                 d.targetPos.copy(d.homePos);
                 d.delay = i * 0.002;
                 d.mesh.material.color.setHex(0xffffff);
             });
-            setTimeout(() => { APP.state = 'LANDED'; statusDiv.innerText = "System Ready"; }, 5000);
+            if(APP.autoTimer) clearInterval(APP.autoTimer);
         }
     }
 
@@ -648,7 +690,8 @@
         if(APP.autoTimer) clearInterval(APP.autoTimer);
         APP.autoTimer = setInterval(() => {
             if(APP.state === 'LANDED') return;
-            if(APP.currentStage < APP.timeline.length - 2) {
+            // 简单判断是否还有下一幕
+            if(APP.currentStage < APP.timeline.length - 2) { // -2 预留保险
                 switchState('NEXT');
             } else {
                 switchState('LAND');
@@ -657,7 +700,6 @@
         }, parseInt(document.getElementById('inp-interval').value) * 1000);
     }
 
-    // 每一帧逻辑
     const clock = new THREE.Clock();
     
     function animate() {
@@ -665,64 +707,80 @@
         const dt = clock.getDelta();
         const time = clock.getElapsedTime();
         
-        // 更新无人机位置
         let allArrived = true;
         
         APP.drones.forEach(d => {
+            // 1. 运动逻辑
             if (d.delay > 0) {
                 d.delay -= dt;
                 allArrived = false;
-                return;
+            } else {
+                const dist = d.mesh.position.distanceTo(d.targetPos);
+                if (dist > 0.5) { // 稍微放宽判定
+                    allArrived = false;
+                    const speed = APP.config.speed * 60 * dt; 
+                    d.mesh.position.lerp(d.targetPos, 0.08 * speed); 
+                } else {
+                    d.mesh.position.copy(d.targetPos);
+                }
             }
 
-            // 简单的 P控制器 (Lerp)
-            const dist = d.mesh.position.distanceTo(d.targetPos);
-            if (dist > 0.1) {
-                allArrived = false;
-                const speed = APP.config.speed * 60 * dt; // 归一化速度
-                d.mesh.position.lerp(d.targetPos, 0.05 * speed); // 0.05 是平滑因子
-            } else {
-                d.mesh.position.copy(d.targetPos);
+            // 2. 颜色动态逻辑 (Breathing)
+            if (d.colorMode === 'breathing' && d.baseColors.length > 0) {
+                // 根据时间循环切换颜色
+                // 周期 2秒
+                const t = (time * 2) % d.baseColors.length;
+                const idx1 = Math.floor(t);
+                const idx2 = (idx1 + 1) % d.baseColors.length;
+                const alpha = t - idx1;
+                d.mesh.material.color.copy(d.baseColors[idx1]).lerp(d.baseColors[idx2], alpha);
             }
         });
 
-        // 摄像机围绕旋转
+        // --- 状态流转核心 (Fix Bug #1) ---
+        // 只有当所有飞机到位，且处于过渡状态时，才切换到悬停
+        if (allArrived) {
+            if (APP.state === 'TAKEOFF' || APP.state === 'TRANSITION') {
+                APP.state = 'HOVERING';
+                updateStatus("✅ 悬停表演中 (请展示手势)", 'success');
+            } else if (APP.state === 'LANDING') {
+                APP.state = 'LANDED';
+                updateStatus("System Ready");
+                setUILocked(false); // 解锁 UI
+            }
+        }
+
+        // 相机动效
         const r = 300;
         camera.position.x = r * Math.sin(time * 0.1);
         camera.position.z = r * Math.cos(time * 0.1);
-        camera.lookAt(0, 80, 0);
+        camera.lookAt(0, 60, 0);
 
         renderer.render(scene, camera);
     }
     animate();
 
-    // ================= 6. 手势识别 (Swipe) =================
+    // ================= 6. 手势识别 =================
     const videoElement = document.getElementById('drone-video');
     const canvasElement = document.getElementById('drone-mask-canvas');
     const canvasCtx = canvasElement.getContext('2d');
-    const statusText = document.getElementById('sys-status');
-
-    // 手势状态变量
+    
     let lastPalmPos = null;
-    let gestureFrames = 0; // 持续帧数统计，防抖
 
     function onResults(results) {
         canvasCtx.save();
         canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
         
-        // 绘制手势骨架 (可选，为了Debug)
         if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
             const landmarks = results.multiHandLandmarks[0];
             drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: '#00FFFF', lineWidth: 2});
             drawLandmarks(canvasCtx, landmarks, {color: '#FF0000', lineWidth: 1, radius: 2});
             
-            // 核心逻辑：手掌中心 (9号点: Middle Finger MCP)
             const palm = landmarks[9]; 
             
-            // 冷却时间
             if (APP.gestureCooldown > 0) {
                 APP.gestureCooldown--;
-                lastPalmPos = palm; // 保持更新但不触发
+                lastPalmPos = palm;
                 canvasCtx.restore();
                 return;
             }
@@ -730,34 +788,22 @@
             if (lastPalmPos) {
                 const dx = palm.x - lastPalmPos.x;
                 const dy = palm.y - lastPalmPos.y;
+                const swipeThreshold = 0.15; 
                 
-                // 阈值设定 (根据摄像头 0-1 坐标系)
-                const swipeThreshold = 0.15; // 需要快速移动
-                
-                // 自动播放模式下不响应手势
                 if (!APP.config.auto) {
                     if (APP.state === 'LANDED') {
-                        // 抬手起飞: y 向上 (MediaPipe y向下增大，所以向上是 y 减小)
-                        if (palm.y < 0.4) { // 手举高
+                        if (palm.y < 0.4) { 
                              switchState('TAKEOFF');
                              triggerCooldown(60);
                         }
-                    } else {
-                        // 飞行中控制
-                        // 右挥 (x 增大) -> 注意镜像反转问题
-                        // 屏幕 scale(-1)，所以原本向右挥(自己右手向右)，在 landmarks 里 x 是减小还是增大？
-                        // 通常：自己向右挥，画面里手向右移。
-                        // 简单判定：
+                    } else if (APP.state === 'HOVERING') { // 只有悬停时才接受指令 (Fix Bug #1)
                         if (dx > swipeThreshold) { 
-                             statusText.innerText = "👉 识别: 下一幕";
                              switchState('NEXT');
-                             triggerCooldown(30);
+                             triggerCooldown(40);
                         } else if (dx < -swipeThreshold) {
-                             statusText.innerText = "👈 识别: 上一幕";
                              switchState('PREV');
-                             triggerCooldown(30);
+                             triggerCooldown(40);
                         } else if (dy > swipeThreshold) {
-                             statusText.innerText = "👇 识别: 降落";
                              switchState('LAND');
                              triggerCooldown(60);
                         }
@@ -773,15 +819,9 @@
     
     function triggerCooldown(frames) {
         APP.gestureCooldown = frames;
-        const st = document.getElementById('sys-status');
-        st.style.borderColor = 'white';
-        setTimeout(() => st.style.borderColor = 'cyan', 500);
     }
 
-    // 初始化 MediaPipe
-    const hands = new Hands({locateFile: (file) => {
-        return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
-    }});
+    const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
     hands.setOptions({maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5});
     hands.onResults(onResults);
     
@@ -791,13 +831,11 @@
     });
     cameraUtils.start();
 
-    // Resize Handler
     window.addEventListener('resize', () => {
         if(!container) return;
         camera.aspect = container.clientWidth / container.clientHeight;
         camera.updateProjectionMatrix();
         renderer.setSize( container.clientWidth, container.clientHeight );
     });
-
 })();
 </script>
