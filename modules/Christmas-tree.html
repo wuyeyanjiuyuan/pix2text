@@ -31,9 +31,9 @@
 
 <div id="tree-container">
     <div class="ui-layer">
-        <div id="status-text" class="status-pill">正在生成测试数据...</div>
+        <div id="status-text" class="status-pill">正在生成金色粒子...</div>
         <div style="margin-top:10px; font-size:12px; color:rgba(255,255,255,0.6);">
-            ✊ 握拳：聚合圣诞树 | 👌 捏合：抓取黑卡片
+            ✊ 握拳：聚合圣诞树 | 👌 捏合：抓取照片
         </div>
     </div>
 
@@ -67,72 +67,62 @@
     renderer.setPixelRatio(window.devicePixelRatio);
     container.appendChild(renderer.domElement);
 
-    const ambientLight = new THREE.AmbientLight(0x404040);
-    scene.add(ambientLight);
-    const pointLight = new THREE.PointLight(0xffffff, 1, 1000);
-    pointLight.position.set(0, 200, 200);
-    scene.add(pointLight);
-
     // ================= 2. 粒子系统 =================
     
     const PARTICLE_COUNT = 800; 
     const TREE_HEIGHT = 600;
     const TREE_BASE_RADIUS = 300;
     
-    // 生成 Emoji 贴图
+    // ★ 修复：Emoji 纹理生成 (确保颜色鲜亮)
     function createEmojiTexture(emoji) {
+        const cvs = document.createElement('canvas');
+        cvs.width = 128; cvs.height = 128; // 提高分辨率
+        const ctx = cvs.getContext('2d');
+        ctx.font = '100px serif'; // 字号变大
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#ffffff'; // 没用，Emoji自带颜色，但有些浏览器需要
+        ctx.fillText(emoji, 64, 64);
+        return new THREE.CanvasTexture(cvs);
+    }
+
+    // ★ 修复：金色光点纹理 (更亮、更柔和)
+    function createSparkTexture() {
         const cvs = document.createElement('canvas');
         cvs.width = 64; cvs.height = 64;
         const ctx = cvs.getContext('2d');
-        ctx.font = '48px serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(emoji, 32, 32);
-        return new THREE.CanvasTexture(cvs);
-    }
-
-    // 生成发光点
-    function createSparkTexture() {
-        const cvs = document.createElement('canvas');
-        cvs.width = 32; cvs.height = 32;
-        const ctx = cvs.getContext('2d');
-        const gradient = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
+        const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+        // 中心白 -> 中间金 -> 边缘透明
         gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
-        gradient.addColorStop(0.2, 'rgba(255, 255, 255, 0.8)');
-        gradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.2)');
+        gradient.addColorStop(0.2, 'rgba(255, 220, 100, 0.8)');
+        gradient.addColorStop(0.5, 'rgba(255, 180, 50, 0.3)');
         gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
         ctx.fillStyle = gradient;
-        ctx.fillRect(0, 0, 32, 32);
+        ctx.fillRect(0, 0, 64, 64);
         return new THREE.CanvasTexture(cvs);
     }
 
-    // ★★★ 生成纯黑图片纹理 (测试用) ★★★
-    function createBlackCardTexture() {
+    // ★ 测试用：纯色卡片 (确保能看见东西)
+    function createColorCardTexture(color) {
         const cvs = document.createElement('canvas');
         cvs.width = 128; cvs.height = 128;
         const ctx = cvs.getContext('2d');
-        
-        // 画一个黑底白边的卡片
-        ctx.fillStyle = '#000000';
+        ctx.fillStyle = color;
         ctx.fillRect(0, 0, 128, 128);
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 4;
-        ctx.strokeRect(2, 2, 124, 124);
-        
-        // 写个字证明它是图
-        ctx.fillStyle = '#ffffff';
-        ctx.font = '20px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText("Photo", 64, 64);
-        
+        // 加个白边框
+        ctx.strokeStyle = 'white';
+        ctx.lineWidth = 10;
+        ctx.strokeRect(0, 0, 128, 128);
         return new THREE.CanvasTexture(cvs);
     }
     
+    // 材质池
     const textures = [
         createEmojiTexture('🎁'), createEmojiTexture('🔔'), 
         createEmojiTexture('🎄'), createEmojiTexture('🎅'),
         createEmojiTexture('❄️'), createEmojiTexture('⭐'),
-        createSparkTexture()
+        createSparkTexture(), createSparkTexture(), // 多放几个光点，增加发光感
+        createSparkTexture(), createSparkTexture()
     ];
 
     const particles = [];
@@ -142,47 +132,50 @@
 
     // 树顶之星
     const topStarGeo = new THREE.SphereGeometry(20, 16, 16);
-    const topStarMat = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+    const topStarMat = new THREE.MeshBasicMaterial({ color: 0xffff88 });
     const topStar = new THREE.Mesh(topStarGeo, topStarMat);
     topStar.position.set(0, TREE_HEIGHT/2 + 20, 0);
     topStar.visible = false; 
     scene.add(topStar);
-    const starLight = new THREE.PointLight(0xffff00, 2, 300);
-    topStar.add(starLight);
-
+    
     // 初始化粒子
     function initParticles() {
-        // 1. 先生成 800 个普通粒子
+        // 1. 生成 800 个装饰粒子
         for (let i = 0; i < PARTICLE_COUNT; i++) {
             const tex = textures[Math.floor(Math.random() * textures.length)];
             const material = new THREE.SpriteMaterial({ 
                 map: tex, 
-                color: 0xffffff,
+                color: 0xffffff, // ★ 关键：这里设为白色，让纹理原色显示出来
                 transparent: true,
-                opacity: 0.9
+                opacity: 0.9,
+                blending: THREE.AdditiveBlending // ★ 关键：加法混合，让重叠处发光，消除黑边
             });
             createParticle(material, false);
         }
 
-        // 2. ★★★ 生成 5 个黑卡片粒子 ★★★
-        const blackTex = createBlackCardTexture();
+        // 2. 生成 5 个彩色卡片 (模拟照片，测试用)
+        const colors = ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff'];
         for (let i = 0; i < 5; i++) {
+            const tex = createColorCardTexture(colors[i]);
             const material = new THREE.SpriteMaterial({ 
-                map: blackTex, 
-                color: 0xffffff 
+                map: tex, 
+                color: 0xffffff,
+                transparent: false // 照片不需要透明混合，保持清晰
             });
-            createParticle(material, true); // true 表示是照片
+            createParticle(material, true); 
         }
     }
 
     function createParticle(material, isPhoto) {
         const sprite = new THREE.Sprite(material);
         
-        // 树形态位置
+        // 树形态位置 (螺旋上升)
         const y = (Math.random() - 0.5) * TREE_HEIGHT; 
         const relY = (y + TREE_HEIGHT/2) / TREE_HEIGHT; 
-        const radius = TREE_BASE_RADIUS * (1 - relY); 
-        const angle = Math.random() * Math.PI * 2 * 5; 
+        // 调整形状：底部胖，顶部尖
+        // 使用幂函数让下面更蓬松
+        const radius = TREE_BASE_RADIUS * Math.pow((1 - relY), 0.8); 
+        const angle = Math.random() * Math.PI * 2 * 10; // 更多圈数
         
         const targetX = Math.cos(angle) * radius;
         const targetY = y;
@@ -195,8 +188,10 @@
 
         sprite.position.set(spreadX, spreadY, spreadZ);
         
-        // 照片比普通粒子大
-        const scale = isPhoto ? 50 : (Math.random() * 20 + 15);
+        // 调整大小：光点小一点，Emoji中等，照片大一点
+        let scale = Math.random() * 20 + 10;
+        if (isPhoto) scale = 60;
+        
         sprite.scale.set(scale, scale, 1);
 
         sprite.userData = {
@@ -272,7 +267,8 @@
             .easing(TWEEN.Easing.Elastic.Out)
             .start();
             
-        activePhoto.material.color.setHex(0xffaaaa); 
+        // 稍微变色提示选中
+        // activePhoto.material.color.setHex(0xffaaaa); 
         statusText.innerText = "🖼️ 抓取演示卡片";
     }
 
@@ -280,7 +276,7 @@
         if (!isPinching || !activePhoto) return;
         isPinching = false;
         
-        activePhoto.material.color.setHex(0xffffff);
+        // activePhoto.material.color.setHex(0xffffff);
 
         const target = currentState === 'tree' ? activePhoto.userData.treePos : activePhoto.userData.spreadPos;
         const scale = activePhoto.userData.baseScale;
@@ -299,7 +295,6 @@
 
     function onResults(results) {
         statusText.classList.remove('loading');
-        // 第一次成功识别
         if(statusText.innerText.includes("生成")) {
              statusText.innerText = "引擎就绪，请尝试捏合";
         }
