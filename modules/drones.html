@@ -38,7 +38,7 @@
         font-size: 12px; white-space: nowrap;
     }
     
-    /* 更新后的手势提示样式 */
+    /* 手势提示 */
     .gesture-hint { 
         font-size:12px; color:#fff; background: rgba(0,0,0,0.6); 
         padding: 8px; border-radius: 6px; border-left: 3px solid cyan;
@@ -142,7 +142,7 @@
     <div id="stage-container">
         <div class="drone-overlay">
             <div class="status-row">
-                <div id="sys-status" class="status-tag">System Ready</div>
+                <div id="sys-status" class="status-tag">System Ready!</div>
                 <div id="sys-info" class="info-tag">🛸 400 | ⚡ 8.0</div>
             </div>
             <div class="gesture-hint">
@@ -260,7 +260,12 @@
         },
         autoTimer: null,
         gestureCooldown: 0,
-        tempColors: ['#ff0000']
+        tempColors: ['#ff0000'],
+        // ★★★ 摄像机动态参数 ★★★
+        cameraRadius: 200,      // 当前半径
+        targetRadius: 200,      // 目标半径 (自适应计算)
+        cameraHeight: 50,       // 当前聚焦高度
+        targetHeight: 50        // 目标聚焦高度
     };
 
     const timelineContainer = document.getElementById('timeline-container');
@@ -518,6 +523,7 @@
     scene.fog = new THREE.FogExp2(0x050505, 0.002);
 
     const camera = new THREE.PerspectiveCamera(60, width / height, 1, 2000);
+    // 初始位置
     camera.position.set(0, 50, 200);
     camera.lookAt(0, 50, 0);
 
@@ -638,6 +644,11 @@
         const dronesPerBlock = Math.floor(APP.drones.length / validBlocks.length);
         let droneIdx = 0;
         
+        // ★★★ 1. 用于自适应运镜的变量 ★★★
+        let maxPos = 0; // 记录最远的点的横向距离
+        let avgY = 0;   // 记录平均高度
+        let activePointsCount = 0;
+
         validBlocks.forEach((block, blockIdx) => {
             let points = [];
             
@@ -660,8 +671,15 @@
                 const d = APP.drones[droneIdx];
                 const p = points[i % points.length];
                 const offsetX = (validBlocks.length > 1) ? (blockIdx - (validBlocks.length-1)/2) * 80 : 0;
+                
                 d.targetPos.set(p.x + offsetX, p.y, p.z);
                 
+                // 收集位置信息用于计算包围盒
+                const dist = Math.abs(d.targetPos.x); // 横向距离
+                if (dist > maxPos) maxPos = dist;
+                avgY += d.targetPos.y;
+                activePointsCount++;
+
                 d.colorMode = block.colorMode;
                 d.baseColors = block.colors.map(c => new THREE.Color(c));
                 
@@ -679,6 +697,19 @@
                 droneIdx++;
             }
         });
+
+        // ★★★ 2. 计算最佳相机距离 (FOV算法) ★★★
+        if (activePointsCount > 0) {
+            // 摄像机视场角(FOV)是 60度
+            const fov = 60 * (Math.PI / 180);
+            // 简单的三角函数：tan(fov/2) = (物体一半宽度) / 距离
+            // 我们需要留一点边距 (* 1.3)
+            const safeDistance = (maxPos * 1.3) / Math.tan(fov / 2);
+            
+            // 限制最小和最大距离，防止相机穿模或太远
+            APP.targetRadius = Math.max(200, Math.min(safeDistance, 800));
+            APP.targetHeight = avgY / activePointsCount;
+        }
 
         for (let j = droneIdx; j < APP.drones.length; j++) {
              APP.drones[j].targetPos.copy(APP.drones[j].homePos);
@@ -750,6 +781,11 @@
                 d.delay = i * 0.002;
                 d.mesh.material.color.setHex(0xffffff);
             });
+            
+            // 降落时重置相机
+            APP.targetRadius = 200;
+            APP.targetHeight = 50;
+            
             if(APP.autoTimer) clearInterval(APP.autoTimer);
         }
     }
@@ -811,33 +847,33 @@
             }
         }
 
-        const r = 300;
-        camera.position.x = r * Math.sin(time * 0.1);
-        camera.position.z = r * Math.cos(time * 0.1);
-        camera.lookAt(0, 60, 0);
+        // ★★★ 3. 执行平滑运镜 ★★★
+        // 这里的 0.03 是相机移动的平滑系数，越小越慢越有电影感
+        APP.cameraRadius = THREE.MathUtils.lerp(APP.cameraRadius, APP.targetRadius, 0.03);
+        APP.cameraHeight = THREE.MathUtils.lerp(APP.cameraHeight, APP.targetHeight, 0.03);
+        
+        camera.position.x = APP.cameraRadius * Math.sin(time * 0.1); // 保持旋转
+        camera.position.z = APP.cameraRadius * Math.cos(time * 0.1);
+        
+        // 始终看向图案中心
+        camera.lookAt(0, APP.cameraHeight, 0);
 
         renderer.render(scene, camera);
     }
     animate();
 
-    // ================= 6. Gestures (全新静态手势版) =================
+    // ================= 6. Gestures (Static Pose) =================
     const videoElement = document.getElementById('drone-video');
     const canvasElement = document.getElementById('drone-mask-canvas');
     const canvasCtx = canvasElement.getContext('2d');
     
-    // ★★★ 核心：检测手指是否伸直 ★★★
-    // 算法：比较指尖(Tip)和指根(MCP/Wrist)到手腕的距离
-    // 如果 Tip 离 Wrist 更远，就是伸直；如果 MCP 离 Wrist 更远(或差不多)，就是弯曲
     function isFingerExtended(landmarks, tipIdx, pipIdx) {
         const wrist = landmarks[0];
         const tip = landmarks[tipIdx];
-        const pip = landmarks[pipIdx]; // 指关节
-        
-        // 计算距离
+        const pip = landmarks[pipIdx]; 
         const dTip = Math.hypot(tip.x - wrist.x, tip.y - wrist.y);
         const dPip = Math.hypot(pip.x - wrist.x, pip.y - wrist.y);
-        
-        return dTip > dPip; // 如果指尖比关节离手腕远，就是伸直
+        return dTip > dPip; 
     }
 
     function onResults(results) {
@@ -855,29 +891,22 @@
                 return;
             }
 
-            // --- 识别逻辑 ---
-            // 索引: 8:食指尖, 6:食指根; 12:中指尖...
             const indexOpen = isFingerExtended(landmarks, 8, 6);
             const middleOpen = isFingerExtended(landmarks, 12, 10);
             const ringOpen = isFingerExtended(landmarks, 16, 14);
             const pinkyOpen = isFingerExtended(landmarks, 20, 18);
-            // 拇指比较特殊，简单判断离小指远不远，这里简化逻辑，主要看四指
             
             let detected = null;
 
-            // 1. 拳头 (0指): 必须全部弯曲
             if (!indexOpen && !middleOpen && !ringOpen && !pinkyOpen) {
                 detected = 'FIST';
             }
-            // 2. 剪刀手 (2指): 食指+中指伸直，无名+小指弯曲
             else if (indexOpen && middleOpen && !ringOpen && !pinkyOpen) {
                 detected = 'PEACE';
             }
-            // 3. 竖食指 (1指): 食指伸直，其他弯曲
             else if (indexOpen && !middleOpen && !ringOpen && !pinkyOpen) {
                 detected = 'ONE';
             }
-            // 4. 张开手 (4-5指): 至少4指伸直
             else if (indexOpen && middleOpen && ringOpen && pinkyOpen) {
                 detected = 'OPEN';
             }
@@ -887,20 +916,20 @@
                 
                 if (!APP.config.auto) {
                     if (APP.state === 'LANDED') {
-                        if (detected === 'OPEN') { // ✋ 张手 -> 起飞
+                        if (detected === 'OPEN') { 
                              switchState('TAKEOFF');
                              triggerCooldown(60);
                         }
                     } else if (APP.state === 'HOVERING') {
-                        if (detected === 'PEACE') { // ✌️ 耶 -> 下一个
+                        if (detected === 'PEACE') { 
                              statusText.innerText = "✌️ 识别: 下一幕";
                              switchState('NEXT');
                              triggerCooldown(40);
-                        } else if (detected === 'ONE') { // ☝️ 一 -> 上一个
+                        } else if (detected === 'ONE') { 
                              statusText.innerText = "☝️ 识别: 上一幕";
                              switchState('PREV');
                              triggerCooldown(40);
-                        } else if (detected === 'FIST') { // ✊ 拳头 -> 降落
+                        } else if (detected === 'FIST') { 
                              statusText.innerText = "✊ 识别: 降落";
                              switchState('LAND');
                              triggerCooldown(60);
