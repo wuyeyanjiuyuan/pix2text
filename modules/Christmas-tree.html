@@ -6,46 +6,20 @@
     }
     #three-canvas { width: 100%; height: 100%; display: block; }
     
-    /* UI 层：让按钮更显眼 */
+    /* UI 层 */
     .ui-layer {
         position: absolute; top: 20px; left: 20px; z-index: 10;
-        pointer-events: none; /* 让鼠标穿透背景，但按钮可点 */
+        pointer-events: none; 
     }
-    
-    /* 状态条 */
     .status-pill {
         display: inline-block; padding: 8px 16px;
-        background: rgba(20, 40, 20, 0.85); 
-        border: 1px solid rgba(100, 255, 100, 0.4);
-        border-radius: 30px; backdrop-filter: blur(8px);
-        font-family: 'Segoe UI', sans-serif; font-size: 14px; 
-        color: #50ff50; text-shadow: 0 0 5px rgba(80,255,80,0.5);
-        box-shadow: 0 4px 15px rgba(0,0,0,0.4);
-        margin-bottom: 12px; transition: all 0.3s;
+        background: rgba(20, 40, 20, 0.8); border: 1px solid rgba(100, 255, 100, 0.3);
+        border-radius: 30px; backdrop-filter: blur(5px);
+        font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #50ff50;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        margin-bottom: 10px; transition: all 0.3s;
     }
     
-    /* 上传按钮 (美化版) */
-    .upload-btn {
-        pointer-events: auto; cursor: pointer;
-        display: inline-flex; align-items: center; gap: 8px;
-        padding: 10px 20px; 
-        background: linear-gradient(135deg, #ff4444, #cc0000); /* 圣诞红 */
-        border: 1px solid rgba(255, 255, 255, 0.3); 
-        color: white; font-weight: bold;
-        border-radius: 25px; font-size: 14px; 
-        box-shadow: 0 4px 12px rgba(255, 0, 0, 0.3);
-        transition: transform 0.2s, box-shadow 0.2s;
-    }
-    .upload-btn:hover { 
-        transform: translateY(-2px);
-        box-shadow: 0 6px 16px rgba(255, 0, 0, 0.5);
-        background: linear-gradient(135deg, #ff6666, #dd0000);
-    }
-    .upload-btn:active { transform: translateY(0); }
-    
-    #file-input { display: none; }
-
-    /* 摄像头预览 */
     .cam-box {
         position: absolute; bottom: 20px; right: 20px;
         width: 120px; height: 90px; border-radius: 8px; overflow: hidden;
@@ -57,16 +31,9 @@
 
 <div id="tree-container">
     <div class="ui-layer">
-        <div id="status-text" class="status-pill">正在初始化圣诞引擎...</div>
-        <br>
-        <label class="upload-btn">
-            📷 上传照片挂到树上
-            <input type="file" id="file-input" accept="images/*" multiple>
-        </label>
-        
-        <div style="margin-top:12px; font-size:12px; color:rgba(255,255,255,0.7); line-height:1.6;">
-            ✊ 握拳：聚合圣诞树<br>
-            👌 捏合：查看我的照片
+        <div id="status-text" class="status-pill">正在生成测试数据...</div>
+        <div style="margin-top:10px; font-size:12px; color:rgba(255,255,255,0.6);">
+            ✊ 握拳：聚合圣诞树 | 👌 捏合：抓取黑卡片
         </div>
     </div>
 
@@ -106,7 +73,7 @@
     pointLight.position.set(0, 200, 200);
     scene.add(pointLight);
 
-    // ================= 2. 粒子系统核心逻辑 =================
+    // ================= 2. 粒子系统 =================
     
     const PARTICLE_COUNT = 800; 
     const TREE_HEIGHT = 600;
@@ -124,7 +91,7 @@
         return new THREE.CanvasTexture(cvs);
     }
 
-    // 生成发光点纹理
+    // 生成发光点
     function createSparkTexture() {
         const cvs = document.createElement('canvas');
         cvs.width = 32; cvs.height = 32;
@@ -138,6 +105,28 @@
         ctx.fillRect(0, 0, 32, 32);
         return new THREE.CanvasTexture(cvs);
     }
+
+    // ★★★ 生成纯黑图片纹理 (测试用) ★★★
+    function createBlackCardTexture() {
+        const cvs = document.createElement('canvas');
+        cvs.width = 128; cvs.height = 128;
+        const ctx = cvs.getContext('2d');
+        
+        // 画一个黑底白边的卡片
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, 128, 128);
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 4;
+        ctx.strokeRect(2, 2, 124, 124);
+        
+        // 写个字证明它是图
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '20px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText("Photo", 64, 64);
+        
+        return new THREE.CanvasTexture(cvs);
+    }
     
     const textures = [
         createEmojiTexture('🎁'), createEmojiTexture('🔔'), 
@@ -147,7 +136,7 @@
     ];
 
     const particles = [];
-    const photoParticles = []; // 专门存储用户上传的照片粒子
+    const photoParticles = [];
     const particleGroup = new THREE.Group();
     scene.add(particleGroup);
 
@@ -163,6 +152,7 @@
 
     // 初始化粒子
     function initParticles() {
+        // 1. 先生成 800 个普通粒子
         for (let i = 0; i < PARTICLE_COUNT; i++) {
             const tex = textures[Math.floor(Math.random() * textures.length)];
             const material = new THREE.SpriteMaterial({ 
@@ -171,115 +161,60 @@
                 transparent: true,
                 opacity: 0.9
             });
-            const sprite = new THREE.Sprite(material);
-            
-            // 树形态位置
-            const y = (Math.random() - 0.5) * TREE_HEIGHT; 
-            const relY = (y + TREE_HEIGHT/2) / TREE_HEIGHT; 
-            const radius = TREE_BASE_RADIUS * (1 - relY); 
-            const angle = Math.random() * Math.PI * 2 * 5; 
-            
-            const targetX = Math.cos(angle) * radius;
-            const targetY = y;
-            const targetZ = Math.sin(angle) * radius;
+            createParticle(material, false);
+        }
 
-            // 散开形态位置
-            const spreadX = (Math.random() - 0.5) * 2000;
-            const spreadY = (Math.random() - 0.5) * 1200;
-            const spreadZ = (Math.random() - 0.5) * 1000;
-
-            sprite.position.set(spreadX, spreadY, spreadZ);
-            
-            const scale = Math.random() * 20 + 15;
-            sprite.scale.set(scale, scale, 1);
-
-            sprite.userData = {
-                treePos: new THREE.Vector3(targetX, targetY, targetZ),
-                spreadPos: new THREE.Vector3(spreadX, spreadY, spreadZ),
-                baseScale: scale,
-                isPhoto: false // 标记是否为照片
-            };
-
-            particleGroup.add(sprite);
-            particles.push(sprite);
+        // 2. ★★★ 生成 5 个黑卡片粒子 ★★★
+        const blackTex = createBlackCardTexture();
+        for (let i = 0; i < 5; i++) {
+            const material = new THREE.SpriteMaterial({ 
+                map: blackTex, 
+                color: 0xffffff 
+            });
+            createParticle(material, true); // true 表示是照片
         }
     }
-    initParticles();
 
-    // ================= 3. ★★★ 核心：本地图片上传处理 ★★★ =================
-    const fileInput = document.getElementById('file-input');
-    
-    fileInput.addEventListener('change', function(e) {
-        if (this.files.length > 0) {
-            statusText.innerText = `正在处理 ${this.files.length} 张照片...`;
-            
-            // 遍历用户选的所有文件
-            Array.from(this.files).forEach((file, index) => {
-                const reader = new FileReader();
-                
-                // 1. 读取文件完成后的回调
-                reader.onload = function(event) {
-                    const img = new Image();
-                    img.src = event.target.result; // 这里拿到的是 base64 数据流
-                    
-                    // 2. 转换成 Three.js 纹理
-                    const tex = new THREE.TextureLoader().load(img.src, () => {
-                        // 3. 纹理加载完毕，把粒子加进场景
-                        // 为了不卡顿，稍微延时一点点插入
-                        setTimeout(() => {
-                            replaceParticleWithPhoto(tex);
-                        }, index * 100); 
-                    });
-                };
-                
-                // 开始读取
-                reader.readAsDataURL(file);
-            });
-            
-            setTimeout(() => {
-                statusText.innerText = "照片已挂载！试试捏合手指查看";
-            }, 1000);
-        }
-    });
-
-    // 将现有的一个普通粒子替换成照片
-    function replaceParticleWithPhoto(texture) {
-        // 创建照片材质
-        const material = new THREE.SpriteMaterial({ map: texture, color: 0xffffff });
+    function createParticle(material, isPhoto) {
         const sprite = new THREE.Sprite(material);
         
-        // 随机挑一个“倒霉”的普通粒子删掉 (保持总数平衡，性能更好)
-        // 尽量不删已经上传的照片
-        let replaceIdx = Math.floor(Math.random() * particles.length);
-        let retries = 0;
-        while(particles[replaceIdx].userData.isPhoto && retries < 10) {
-            replaceIdx = Math.floor(Math.random() * particles.length);
-            retries++;
-        }
+        // 树形态位置
+        const y = (Math.random() - 0.5) * TREE_HEIGHT; 
+        const relY = (y + TREE_HEIGHT/2) / TREE_HEIGHT; 
+        const radius = TREE_BASE_RADIUS * (1 - relY); 
+        const angle = Math.random() * Math.PI * 2 * 5; 
         
-        const oldSprite = particles[replaceIdx];
-        
-        // 继承旧粒子的位置信息
-        sprite.userData = oldSprite.userData;
-        sprite.userData.isPhoto = true; // ★ 标记为照片
-        sprite.userData.baseScale = 50; // ★ 照片比普通铃铛大一点，更显眼
-        
-        // 初始位置设为旧粒子的当前位置
-        sprite.position.copy(oldSprite.position);
-        sprite.scale.set(0, 0, 1); // 初始大小为0，准备做动画
+        const targetX = Math.cos(angle) * radius;
+        const targetY = y;
+        const targetZ = Math.sin(angle) * radius;
 
-        // 替换
-        particleGroup.remove(oldSprite);
-        particles[replaceIdx] = sprite; 
-        particleGroup.add(sprite);
-        photoParticles.push(sprite); // 存入“照片组”方便查找
+        // 散开形态位置
+        const spreadX = (Math.random() - 0.5) * 2000;
+        const spreadY = (Math.random() - 0.5) * 1200;
+        const spreadZ = (Math.random() - 0.5) * 1000;
+
+        sprite.position.set(spreadX, spreadY, spreadZ);
         
-        // ★ 弹入动画：啵的一下变大
-        new TWEEN.Tween(sprite.scale)
-            .to({ x: 50, y: 50 }, 600)
-            .easing(TWEEN.Easing.Elastic.Out)
-            .start();
+        // 照片比普通粒子大
+        const scale = isPhoto ? 50 : (Math.random() * 20 + 15);
+        sprite.scale.set(scale, scale, 1);
+
+        sprite.userData = {
+            treePos: new THREE.Vector3(targetX, targetY, targetZ),
+            spreadPos: new THREE.Vector3(spreadX, spreadY, spreadZ),
+            baseScale: scale,
+            isPhoto: isPhoto
+        };
+
+        particleGroup.add(sprite);
+        particles.push(sprite);
+        
+        if (isPhoto) {
+            photoParticles.push(sprite);
+        }
     }
+
+    initParticles();
 
     // ================= 4. 状态控制 =================
     
@@ -317,15 +252,11 @@
         });
     }
 
-    // ★★★ 核心：抓取照片逻辑 ★★★
     function grabPhoto() {
-        if (isPinching) return;
-        
-        // 优先从 photoParticles 里找 (也就是用户上传的图)
-        let targetPool = photoParticles.length > 0 ? photoParticles : particles;
-        
+        if (isPinching || photoParticles.length === 0) return;
         isPinching = true;
-        activePhoto = targetPool[Math.floor(Math.random() * targetPool.length)];
+        
+        activePhoto = photoParticles[Math.floor(Math.random() * photoParticles.length)];
         
         if(!activePhoto) return;
 
@@ -337,17 +268,20 @@
 
         // 放大
         new TWEEN.Tween(activePhoto.scale)
-            .to({ x: 350, y: 350 }, 800) 
+            .to({ x: 300, y: 300 }, 800) 
             .easing(TWEEN.Easing.Elastic.Out)
             .start();
             
-        statusText.innerText = "🖼️ 正在查看回忆";
+        activePhoto.material.color.setHex(0xffaaaa); 
+        statusText.innerText = "🖼️ 抓取演示卡片";
     }
 
     function releasePhoto() {
         if (!isPinching || !activePhoto) return;
         isPinching = false;
         
+        activePhoto.material.color.setHex(0xffffff);
+
         const target = currentState === 'tree' ? activePhoto.userData.treePos : activePhoto.userData.spreadPos;
         const scale = activePhoto.userData.baseScale;
 
@@ -365,8 +299,9 @@
 
     function onResults(results) {
         statusText.classList.remove('loading');
-        if(statusText.innerText.includes("初始化")) {
-             statusText.innerText = "引擎就绪，请上传照片";
+        // 第一次成功识别
+        if(statusText.innerText.includes("生成")) {
+             statusText.innerText = "引擎就绪，请尝试捏合";
         }
         
         canvasCtx.save();
@@ -386,7 +321,6 @@
             const indexTip = landmarks[8];
             const pinchDist = Math.sqrt(Math.pow(thumbTip.x - indexTip.x, 2) + Math.pow(thumbTip.y - indexTip.y, 2));
 
-            // 捏合判断 (0.05 是阈值，越小越灵敏)
             if (pinchDist < 0.05) { 
                 grabPhoto();
             } else {
@@ -405,7 +339,6 @@
     }
 
     const hands = new Hands({locateFile: (file) => {
-        // 如果已下载本地模型，改为 `return js/${file}`;`
         return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
     }});
     
