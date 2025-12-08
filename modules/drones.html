@@ -38,7 +38,14 @@
         font-size: 12px; white-space: nowrap;
     }
     
-    .gesture-hint { font-size:12px; color:#888; background: rgba(0,0,0,0.5); padding: 5px; border-radius: 4px;}
+    /* 更新后的手势提示样式 */
+    .gesture-hint { 
+        font-size:12px; color:#fff; background: rgba(0,0,0,0.6); 
+        padding: 8px; border-radius: 6px; border-left: 3px solid cyan;
+        display: grid; grid-template-columns: 1fr 1fr; gap: 5px;
+        width: 240px;
+    }
+    .gesture-item { display: flex; align-items: center; gap: 5px; }
 
     .cam-preview-box {
         position: absolute; bottom: 10px; left: 10px;
@@ -139,7 +146,10 @@
                 <div id="sys-info" class="info-tag">🛸 400 | ⚡ 8.0</div>
             </div>
             <div class="gesture-hint">
-                👋 抬手: 起飞 | ⬅️ 左挥: 上一幕 | ➡️ 右挥: 下一幕 | 👇 下挥: 降落
+                <div class="gesture-item">✋ <span>起飞</span></div>
+                <div class="gesture-item">✊ <span>降落</span></div>
+                <div class="gesture-item">✌️ <span>下一幕</span></div>
+                <div class="gesture-item">☝️ <span>上一幕</span></div>
             </div>
         </div>
         <div class="cam-preview-box"><canvas id="drone-mask-canvas"></canvas></div>
@@ -266,7 +276,6 @@
         else controlsPanel.classList.remove('ui-locked');
     }
 
-    // 实时更新顶部状态
     function updateSysInfo() {
         sysInfo.innerText = `🛸 ${APP.config.count} | ⚡ ${document.getElementById('inp-speed').value}`;
     }
@@ -371,10 +380,9 @@
         
         document.getElementById('cfg-type').dispatchEvent(new Event('change'));
         renderColorList();
-        checkPointCount(); // 打开时检查一次
+        checkPointCount(); 
     }
 
-    // ★★★ 核心升级：实时计算点数消耗 ★★★
     function checkPointCount() {
         const type = document.getElementById('cfg-type').value;
         const text = document.getElementById('cfg-text-val').value;
@@ -382,21 +390,15 @@
         let estimated = 0;
 
         if (type === 'shape') {
-            estimated = Math.min(currentTotal, 200); // 形状通常不用太多
+            estimated = Math.min(currentTotal, 200); 
             estHint.innerText = `预估消耗: ${estimated} / ${currentTotal} (自动适配)`;
             estHint.style.color = '#666';
         } else {
-            // 文字：简单的估算算法
-            // 假设每个汉字平均需要 50-80 个点才能看清
-            // 英文每个字母需要 20-30 个点
-            // 我们通过 Canvas 真实计算一下（采样率低一点以提高性能）
             if(!text) {
                 estHint.innerText = `预估消耗: 0 / ${currentTotal}`;
                 return;
             }
-            
-            // 快速模拟计算
-            const pts = getTextPoints(text, 1000, 5); // 5是step，粗略计算
+            const pts = getTextPoints(text, 1000, 5); 
             estimated = pts.length;
             
             if (estimated > currentTotal) {
@@ -409,7 +411,6 @@
         }
     }
 
-    // 监听输入，实时计算提示
     document.getElementById('cfg-text-val').addEventListener('input', checkPointCount);
 
     document.getElementById('btn-cancel').onclick = closePopup;
@@ -420,24 +421,22 @@
         checkPointCount();
     };
     
-    // ★★★ 监听：无人机数量改变，实时重绘 ★★★
     document.getElementById('inp-count').onchange = e => {
         const val = parseInt(e.target.value);
         if(APP.state !== 'LANDED') {
             alert("请先降落再修改数量，这涉及到硬件重置！");
-            e.target.value = APP.config.count; // 恢复旧值
+            e.target.value = APP.config.count; 
             return;
         }
         APP.config.count = val;
         updateSysInfo();
-        initDrones(); // 销毁并重建
+        initDrones(); 
     };
 
-    // ★★★ 监听：速度改变，实时生效 ★★★
     document.getElementById('inp-speed').onchange = e => {
         const val = parseFloat(e.target.value);
         APP.config.speed = val / 100;
-        updateSysInfo(); // 更新顶部显示
+        updateSysInfo(); 
     };
     
     document.getElementById('inp-auto').onchange = e => {
@@ -476,7 +475,7 @@
         };
 
         let label = type === 'shape' ? shape : (text || 'Text');
-        if(label.length > 5) label = label.substring(0,4) + '..'; // UI上截断过长的文字
+        if(label.length > 5) label = label.substring(0,4) + '..'; 
         currentEditingBlock.dom.querySelector('span').innerText = label;
         
         const preview = currentEditingBlock.dom.querySelector('.block-color-preview');
@@ -533,7 +532,6 @@
     const droneGeo = new THREE.SphereGeometry(1.5, 8, 8); 
 
     function initDrones() {
-        // 1. 彻底清除旧 Mesh
         APP.drones.forEach(d => {
             if(d.mesh) {
                 scene.remove(d.mesh);
@@ -543,24 +541,18 @@
         });
         APP.drones = [];
 
-        // 2. 重新生成
         const count = APP.config.count;
         const cols = Math.floor(Math.sqrt(count));
         
         for(let i=0; i<count; i++) {
             const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
             const mesh = new THREE.Mesh(droneGeo, material);
-            
-            // 排列逻辑：尽量排成正方形
             const row = Math.floor(i / cols);
             const col = i % cols;
-            // 间距稍微紧凑点：4
             const x = (col - cols/2) * 4;
             const z = (row - Math.floor(count/cols)/2) * 4;
-            
             mesh.position.set(x, 0.5, z);
             scene.add(mesh);
-
             APP.drones.push({
                 mesh: mesh,
                 homePos: new THREE.Vector3(x, 0.5, z),
@@ -570,23 +562,18 @@
                 delay: 0
             });
         }
-        console.log(`Initialized ${count} drones.`);
     }
-    // 初始运行一次
     initDrones();
     updateSysInfo();
 
     // ================= 4. Logic =================
     
-    // ★★★ 增强版文字生成：支持变长，自动布局 ★★★
     function getTextPoints(text, maxCount, step=3) {
         const canvas = document.createElement('canvas');
-        // 根据字数动态调整画布大小
         const fontSize = 70;
         const textLen = text.length;
-        canvas.width = Math.max(100, textLen * fontSize); // 宽度随字数变
+        canvas.width = Math.max(100, textLen * fontSize); 
         canvas.height = 100;
-        
         const ctx = canvas.getContext('2d');
         ctx.font = `bold ${fontSize}px "Microsoft YaHei", sans-serif`; 
         ctx.fillStyle = 'white';
@@ -597,11 +584,9 @@
         const imageData = ctx.getImageData(0,0, canvas.width, 100);
         const points = [];
         
-        // 采样
         for(let y=0; y<100; y+=step) { 
             for(let x=0; x<canvas.width; x+=step) {
                 if(imageData.data[(y*canvas.width+x)*4] > 128) {
-                    // 映射回3D: 让文字居中
                     points.push(new THREE.Vector3((x - canvas.width/2)*3, (100-y)*2 + 20, 0));
                 }
             }
@@ -650,7 +635,6 @@
         const validBlocks = layerData ? layerData.blocks.filter(b => b.configured) : [];
         if (validBlocks.length === 0) return false; 
 
-        // 简单均分无人机
         const dronesPerBlock = Math.floor(APP.drones.length / validBlocks.length);
         let droneIdx = 0;
         
@@ -660,34 +644,21 @@
             if (block.type === 'shape') {
                 points = getShapePoints(block.shape, dronesPerBlock);
             } else {
-                // ★ 文字生成：如果文字太长，这里会尝试生成所有点
-                // 但如果点数 > dronesPerBlock，需要采样截断，或者让多出来的点随机飞
                 const text = block.text || '?';
-                
-                // 动态步长：如果字多，点不够，就增加 step (稀疏化)
-                // 粗略估算：1个字 ~ 500点(step=1) -> 55点(step=3)
-                // 先尝试高精度
                 points = getTextPoints(text, dronesPerBlock, 3);
-                
-                // 如果点太多，超过了分配给这个积木的飞机数，就必须降采样(稀疏)
                 if (points.length > dronesPerBlock) {
-                    // 重新生成，加大步长 (简单粗暴的优化)
                     points = getTextPoints(text, dronesPerBlock, 4); 
                 }
             }
             
-            // 如果点还是不够，补全
             if (points.length === 0) points.push(new THREE.Vector3(0,50,0));
             const targetCount = dronesPerBlock;
-            // 循环使用点，或者截断
             
             for (let i = 0; i < targetCount; i++) {
                 if (droneIdx >= APP.drones.length) break;
                 
                 const d = APP.drones[droneIdx];
-                // 如果 points 不够，取模循环；如果 points 太多，只取前 N 个
                 const p = points[i % points.length];
-                
                 const offsetX = (validBlocks.length > 1) ? (blockIdx - (validBlocks.length-1)/2) * 80 : 0;
                 d.targetPos.set(p.x + offsetX, p.y, p.z);
                 
@@ -705,7 +676,6 @@
                     const c = d.baseColors[i % d.baseColors.length];
                     d.mesh.material.color.copy(c);
                 }
-                
                 droneIdx++;
             }
         });
@@ -714,7 +684,6 @@
              APP.drones[j].targetPos.copy(APP.drones[j].homePos);
              APP.drones[j].mesh.material.color.setHex(0x222222);
         }
-        
         return true;
     }
 
@@ -851,12 +820,25 @@
     }
     animate();
 
-    // ================= 6. Gestures =================
+    // ================= 6. Gestures (全新静态手势版) =================
     const videoElement = document.getElementById('drone-video');
     const canvasElement = document.getElementById('drone-mask-canvas');
     const canvasCtx = canvasElement.getContext('2d');
     
-    let lastPalmPos = null;
+    // ★★★ 核心：检测手指是否伸直 ★★★
+    // 算法：比较指尖(Tip)和指根(MCP/Wrist)到手腕的距离
+    // 如果 Tip 离 Wrist 更远，就是伸直；如果 MCP 离 Wrist 更远(或差不多)，就是弯曲
+    function isFingerExtended(landmarks, tipIdx, pipIdx) {
+        const wrist = landmarks[0];
+        const tip = landmarks[tipIdx];
+        const pip = landmarks[pipIdx]; // 指关节
+        
+        // 计算距离
+        const dTip = Math.hypot(tip.x - wrist.x, tip.y - wrist.y);
+        const dPip = Math.hypot(pip.x - wrist.x, pip.y - wrist.y);
+        
+        return dTip > dPip; // 如果指尖比关节离手腕远，就是伸直
+    }
 
     function onResults(results) {
         canvasCtx.save();
@@ -867,43 +849,65 @@
             drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: '#00FFFF', lineWidth: 2});
             drawLandmarks(canvasCtx, landmarks, {color: '#FF0000', lineWidth: 1, radius: 2});
             
-            const palm = landmarks[9]; 
-            
             if (APP.gestureCooldown > 0) {
                 APP.gestureCooldown--;
-                lastPalmPos = palm;
                 canvasCtx.restore();
                 return;
             }
 
-            if (lastPalmPos) {
-                const dx = palm.x - lastPalmPos.x;
-                const dy = palm.y - lastPalmPos.y;
-                const swipeThreshold = 0.15; 
+            // --- 识别逻辑 ---
+            // 索引: 8:食指尖, 6:食指根; 12:中指尖...
+            const indexOpen = isFingerExtended(landmarks, 8, 6);
+            const middleOpen = isFingerExtended(landmarks, 12, 10);
+            const ringOpen = isFingerExtended(landmarks, 16, 14);
+            const pinkyOpen = isFingerExtended(landmarks, 20, 18);
+            // 拇指比较特殊，简单判断离小指远不远，这里简化逻辑，主要看四指
+            
+            let detected = null;
+
+            // 1. 拳头 (0指): 必须全部弯曲
+            if (!indexOpen && !middleOpen && !ringOpen && !pinkyOpen) {
+                detected = 'FIST';
+            }
+            // 2. 剪刀手 (2指): 食指+中指伸直，无名+小指弯曲
+            else if (indexOpen && middleOpen && !ringOpen && !pinkyOpen) {
+                detected = 'PEACE';
+            }
+            // 3. 竖食指 (1指): 食指伸直，其他弯曲
+            else if (indexOpen && !middleOpen && !ringOpen && !pinkyOpen) {
+                detected = 'ONE';
+            }
+            // 4. 张开手 (4-5指): 至少4指伸直
+            else if (indexOpen && middleOpen && ringOpen && pinkyOpen) {
+                detected = 'OPEN';
+            }
+
+            if (detected) {
+                const statusText = document.getElementById('sys-status');
                 
                 if (!APP.config.auto) {
                     if (APP.state === 'LANDED') {
-                        if (palm.y < 0.4) { 
+                        if (detected === 'OPEN') { // ✋ 张手 -> 起飞
                              switchState('TAKEOFF');
                              triggerCooldown(60);
                         }
-                    } else if (APP.state === 'HOVERING') { 
-                        if (dx > swipeThreshold) { 
+                    } else if (APP.state === 'HOVERING') {
+                        if (detected === 'PEACE') { // ✌️ 耶 -> 下一个
+                             statusText.innerText = "✌️ 识别: 下一幕";
                              switchState('NEXT');
                              triggerCooldown(40);
-                        } else if (dx < -swipeThreshold) {
+                        } else if (detected === 'ONE') { // ☝️ 一 -> 上一个
+                             statusText.innerText = "☝️ 识别: 上一幕";
                              switchState('PREV');
                              triggerCooldown(40);
-                        } else if (dy > swipeThreshold) {
+                        } else if (detected === 'FIST') { // ✊ 拳头 -> 降落
+                             statusText.innerText = "✊ 识别: 降落";
                              switchState('LAND');
                              triggerCooldown(60);
                         }
                     }
                 }
             }
-            lastPalmPos = palm;
-        } else {
-            lastPalmPos = null;
         }
         canvasCtx.restore();
     }
