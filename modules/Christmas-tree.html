@@ -6,20 +6,45 @@
     }
     #three-canvas { width: 100%; height: 100%; display: block; }
     
-    /* UI 层 */
+    /* UI 层：让按钮更显眼 */
     .ui-layer {
         position: absolute; top: 20px; left: 20px; z-index: 10;
-        pointer-events: none; 
-    }
-    .status-pill {
-        display: inline-block; padding: 8px 16px;
-        background: rgba(20, 40, 20, 0.8); border: 1px solid rgba(100, 255, 100, 0.3);
-        border-radius: 30px; backdrop-filter: blur(5px);
-        font-family: 'Segoe UI', sans-serif; font-size: 14px; color: #50ff50;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-        margin-bottom: 10px; transition: all 0.3s;
+        pointer-events: none; /* 让鼠标穿透背景，但按钮可点 */
     }
     
+    /* 状态条 */
+    .status-pill {
+        display: inline-block; padding: 8px 16px;
+        background: rgba(20, 40, 20, 0.85); 
+        border: 1px solid rgba(100, 255, 100, 0.4);
+        border-radius: 30px; backdrop-filter: blur(8px);
+        font-family: 'Segoe UI', sans-serif; font-size: 14px; 
+        color: #50ff50; text-shadow: 0 0 5px rgba(80,255,80,0.5);
+        box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+        margin-bottom: 12px; transition: all 0.3s;
+    }
+    
+    /* 上传按钮 (美化版) */
+    .upload-btn {
+        pointer-events: auto; cursor: pointer;
+        display: inline-flex; align-items: center; gap: 8px;
+        padding: 10px 20px; 
+        background: linear-gradient(135deg, #ff4444, #cc0000); /* 圣诞红 */
+        border: 1px solid rgba(255, 255, 255, 0.3); 
+        color: white; font-weight: bold;
+        border-radius: 25px; font-size: 14px; 
+        box-shadow: 0 4px 12px rgba(255, 0, 0, 0.3);
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .upload-btn:hover { 
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(255, 0, 0, 0.5);
+        background: linear-gradient(135deg, #ff6666, #dd0000);
+    }
+    .upload-btn:active { transform: translateY(0); }
+    
+    #file-input { display: none; }
+
     /* 摄像头预览 */
     .cam-box {
         position: absolute; bottom: 20px; right: 20px;
@@ -28,29 +53,20 @@
     }
     #input-video { position: absolute; opacity: 0; pointer-events: none; }
     #output-canvas { width: 100%; height: 100%; transform: scaleX(-1); }
-
-    /* 照片上传按钮 */
-    .upload-btn {
-        pointer-events: auto; cursor: pointer;
-        display: inline-flex; align-items: center; gap: 8px;
-        padding: 8px 16px; background: rgba(255, 255, 255, 0.15);
-        border: 1px solid rgba(255, 255, 255, 0.3); color: white;
-        border-radius: 20px; font-size: 13px; transition: 0.2s;
-    }
-    .upload-btn:hover { background: rgba(255, 255, 255, 0.3); }
-    #file-input { display: none; }
 </style>
 
 <div id="tree-container">
     <div class="ui-layer">
-        <div id="status-text" class="status-pill">正在装饰圣诞树...</div>
+        <div id="status-text" class="status-pill">正在初始化圣诞引擎...</div>
         <br>
         <label class="upload-btn">
-            📷 添加照片
+            📷 上传照片挂到树上
             <input type="file" id="file-input" accept="image/*" multiple>
         </label>
-        <div style="margin-top:10px; font-size:12px; color:rgba(255,255,255,0.6);">
-            ✊ 握拳：聚合圣诞树 | 👌 捏合：抓取照片放大
+        
+        <div style="margin-top:12px; font-size:12px; color:rgba(255,255,255,0.7); line-height:1.6;">
+            ✊ 握拳：聚合圣诞树<br>
+            👌 捏合：查看我的照片
         </div>
     </div>
 
@@ -96,7 +112,7 @@
     const TREE_HEIGHT = 600;
     const TREE_BASE_RADIUS = 300;
     
-    // 工具：生成 Emoji 贴图
+    // 生成 Emoji 贴图
     function createEmojiTexture(emoji) {
         const cvs = document.createElement('canvas');
         cvs.width = 64; cvs.height = 64;
@@ -108,7 +124,7 @@
         return new THREE.CanvasTexture(cvs);
     }
 
-    // ★★★ 核心修复：手动生成发光点纹理，替代 GitHub 链接 ★★★
+    // 生成发光点纹理
     function createSparkTexture() {
         const cvs = document.createElement('canvas');
         cvs.width = 32; cvs.height = 32;
@@ -123,16 +139,15 @@
         return new THREE.CanvasTexture(cvs);
     }
     
-    // 材质池：全部本地生成
     const textures = [
         createEmojiTexture('🎁'), createEmojiTexture('🔔'), 
         createEmojiTexture('🎄'), createEmojiTexture('🎅'),
         createEmojiTexture('❄️'), createEmojiTexture('⭐'),
-        createSparkTexture() // ★ 使用刚才写的函数
+        createSparkTexture()
     ];
 
     const particles = [];
-    const photoParticles = [];
+    const photoParticles = []; // 专门存储用户上传的照片粒子
     const particleGroup = new THREE.Group();
     scene.add(particleGroup);
 
@@ -158,7 +173,7 @@
             });
             const sprite = new THREE.Sprite(material);
             
-            // 树形态位置 (螺旋上升)
+            // 树形态位置
             const y = (Math.random() - 0.5) * TREE_HEIGHT; 
             const relY = (y + TREE_HEIGHT/2) / TREE_HEIGHT; 
             const radius = TREE_BASE_RADIUS * (1 - relY); 
@@ -182,7 +197,7 @@
                 treePos: new THREE.Vector3(targetX, targetY, targetZ),
                 spreadPos: new THREE.Vector3(spreadX, spreadY, spreadZ),
                 baseScale: scale,
-                isPhoto: false
+                isPhoto: false // 标记是否为照片
             };
 
             particleGroup.add(sprite);
@@ -191,47 +206,79 @@
     }
     initParticles();
 
-    // ================= 3. 照片上传 =================
+    // ================= 3. ★★★ 核心：本地图片上传处理 ★★★ =================
     const fileInput = document.getElementById('file-input');
+    
     fileInput.addEventListener('change', function(e) {
         if (this.files.length > 0) {
-            Array.from(this.files).forEach(file => {
+            statusText.innerText = `正在处理 ${this.files.length} 张照片...`;
+            
+            // 遍历用户选的所有文件
+            Array.from(this.files).forEach((file, index) => {
                 const reader = new FileReader();
+                
+                // 1. 读取文件完成后的回调
                 reader.onload = function(event) {
                     const img = new Image();
-                    img.src = event.target.result;
-                    const tex = new THREE.TextureLoader().load(img.src);
-                    addPhotoParticle(tex);
+                    img.src = event.target.result; // 这里拿到的是 base64 数据流
+                    
+                    // 2. 转换成 Three.js 纹理
+                    const tex = new THREE.TextureLoader().load(img.src, () => {
+                        // 3. 纹理加载完毕，把粒子加进场景
+                        // 为了不卡顿，稍微延时一点点插入
+                        setTimeout(() => {
+                            replaceParticleWithPhoto(tex);
+                        }, index * 100); 
+                    });
                 };
+                
+                // 开始读取
                 reader.readAsDataURL(file);
             });
-            statusText.innerText = `已添加 ${this.files.length} 张照片`;
+            
+            setTimeout(() => {
+                statusText.innerText = "照片已挂载！试试捏合手指查看";
+            }, 1000);
         }
     });
 
-    function addPhotoParticle(texture) {
+    // 将现有的一个普通粒子替换成照片
+    function replaceParticleWithPhoto(texture) {
+        // 创建照片材质
         const material = new THREE.SpriteMaterial({ map: texture, color: 0xffffff });
         const sprite = new THREE.Sprite(material);
         
-        const replaceIdx = Math.floor(Math.random() * particles.length);
+        // 随机挑一个“倒霉”的普通粒子删掉 (保持总数平衡，性能更好)
+        // 尽量不删已经上传的照片
+        let replaceIdx = Math.floor(Math.random() * particles.length);
+        let retries = 0;
+        while(particles[replaceIdx].userData.isPhoto && retries < 10) {
+            replaceIdx = Math.floor(Math.random() * particles.length);
+            retries++;
+        }
+        
         const oldSprite = particles[replaceIdx];
         
+        // 继承旧粒子的位置信息
         sprite.userData = oldSprite.userData;
-        sprite.userData.isPhoto = true; 
-        sprite.userData.baseScale = 40; 
+        sprite.userData.isPhoto = true; // ★ 标记为照片
+        sprite.userData.baseScale = 50; // ★ 照片比普通铃铛大一点，更显眼
+        
+        // 初始位置设为旧粒子的当前位置
         sprite.position.copy(oldSprite.position);
-        sprite.scale.set(0, 0, 1); 
+        sprite.scale.set(0, 0, 1); // 初始大小为0，准备做动画
 
+        // 替换
         particleGroup.remove(oldSprite);
         particles[replaceIdx] = sprite; 
         particleGroup.add(sprite);
+        photoParticles.push(sprite); // 存入“照片组”方便查找
         
+        // ★ 弹入动画：啵的一下变大
         new TWEEN.Tween(sprite.scale)
-            .to({ x: 40, y: 40 }, 500)
-            .easing(TWEEN.Easing.Back.Out)
+            .to({ x: 50, y: 50 }, 600)
+            .easing(TWEEN.Easing.Elastic.Out)
             .start();
-            
-        photoParticles.push(sprite);
     }
 
     // ================= 4. 状态控制 =================
@@ -243,7 +290,7 @@
     function toTreeState() {
         if (currentState === 'tree') return;
         currentState = 'tree';
-        statusText.innerText = "🎄 圣诞树模式 (旋转中)";
+        statusText.innerText = "🎄 圣诞树已聚合";
         topStar.visible = true;
 
         particles.forEach(p => {
@@ -270,32 +317,37 @@
         });
     }
 
+    // ★★★ 核心：抓取照片逻辑 ★★★
     function grabPhoto() {
-        if (isPinching || photoParticles.length === 0) return;
-        isPinching = true;
-        activePhoto = photoParticles[Math.floor(Math.random() * photoParticles.length)];
+        if (isPinching) return;
         
+        // 优先从 photoParticles 里找 (也就是用户上传的图)
+        let targetPool = photoParticles.length > 0 ? photoParticles : particles;
+        
+        isPinching = true;
+        activePhoto = targetPool[Math.floor(Math.random() * targetPool.length)];
+        
+        if(!activePhoto) return;
+
         // 移到屏幕中央
         new TWEEN.Tween(activePhoto.position)
             .to({ x: 0, y: 100, z: 600 }, 800)
             .easing(TWEEN.Easing.Elastic.Out)
             .start();
 
+        // 放大
         new TWEEN.Tween(activePhoto.scale)
-            .to({ x: 300, y: 300 }, 800) 
+            .to({ x: 350, y: 350 }, 800) 
             .easing(TWEEN.Easing.Elastic.Out)
             .start();
             
-        activePhoto.material.color.setHex(0xffaaaa); 
-        statusText.innerText = "🖼️ 正在查看照片";
+        statusText.innerText = "🖼️ 正在查看回忆";
     }
 
     function releasePhoto() {
         if (!isPinching || !activePhoto) return;
         isPinching = false;
         
-        activePhoto.material.color.setHex(0xffffff);
-
         const target = currentState === 'tree' ? activePhoto.userData.treePos : activePhoto.userData.spreadPos;
         const scale = activePhoto.userData.baseScale;
 
@@ -303,7 +355,7 @@
         new TWEEN.Tween(activePhoto.scale).to({x: scale, y: scale}, 1000).easing(TWEEN.Easing.Back.Out).start();
         
         activePhoto = null;
-        statusText.innerText = currentState === 'tree' ? "🎄 圣诞树模式" : "✨ 自由粒子模式";
+        statusText.innerText = currentState === 'tree' ? "🎄 圣诞树已聚合" : "✨ 自由粒子模式";
     }
 
     // ================= 5. MediaPipe =================
@@ -312,7 +364,10 @@
     const canvasCtx = canvasElement.getContext('2d');
 
     function onResults(results) {
-        statusText.classList.remove('loading'); // 去掉加载样式，保留文字
+        statusText.classList.remove('loading');
+        if(statusText.innerText.includes("初始化")) {
+             statusText.innerText = "引擎就绪，请上传照片";
+        }
         
         canvasCtx.save();
         canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
@@ -323,16 +378,15 @@
             drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: '#00FF00', lineWidth: 2});
             drawLandmarks(canvasCtx, landmarks, {color: '#FF0000', lineWidth: 1, radius: 2});
 
-            // 手掌距离
             const wrist = landmarks[0];
             const middleTip = landmarks[12];
             const palmDist = Math.sqrt(Math.pow(middleTip.x - wrist.x, 2) + Math.pow(middleTip.y - wrist.y, 2));
 
-            // 捏合距离
             const thumbTip = landmarks[4];
             const indexTip = landmarks[8];
             const pinchDist = Math.sqrt(Math.pow(thumbTip.x - indexTip.x, 2) + Math.pow(thumbTip.y - indexTip.y, 2));
 
+            // 捏合判断 (0.05 是阈值，越小越灵敏)
             if (pinchDist < 0.05) { 
                 grabPhoto();
             } else {
@@ -351,7 +405,7 @@
     }
 
     const hands = new Hands({locateFile: (file) => {
-        // return `js/${file}`; // 如果下载了模型用这个
+        // 如果已下载本地模型，改为 `return js/${file}`;`
         return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
     }});
     
