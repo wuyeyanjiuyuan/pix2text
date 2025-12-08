@@ -29,8 +29,8 @@
 
 <div id="sun-interaction-container">
     <div class="ui-overlay">
-        <div id="status-text" class="status-badge">1.13正在初始化光影引擎...</div>
-        <div style="font-size:12px; opacity:0.9">✋ 张开：旭日东升 | ✊ 握拳：夕阳西下</div>
+        <div id="status-text" class="status-badge">正在初始化星空引擎...</div>
+        <div style="font-size:12px; opacity:0.9">✋ 张开：日出 (金光) | ✊ 握拳：入夜 (星河)</div>
     </div>
     <div class="cam-preview"><canvas id="output-canvas"></canvas></div>
     <video id="input-video" playsinline></video>
@@ -141,11 +141,8 @@
 
         // --- 太阳本体 ---
         const sunGeometry = new THREE.SphereGeometry(60, 32, 32); 
-        // ★ 修复太阳变黑：emissiveIntensity 自发光强度超高
-        const sunMaterial = new THREE.MeshBasicMaterial({ 
-            color: 0xffffff, 
-            fog: false 
-        });
+        // 尝试修复变黑：使用极高的亮度值来抵抗 ToneMapping
+        const sunMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false, toneMapped: false });
         const sunSphere = new THREE.Mesh(sunGeometry, sunMaterial);
         scene.add(sunSphere);
 
@@ -155,13 +152,34 @@
             color: 0xff4400, 
             transparent: true, 
             blending: THREE.AdditiveBlending,
-            opacity: 1.0,
             depthWrite: false,
-            fog: false
+            fog: false,
+            toneMapped: false
         });
         const sunGlow = new THREE.Sprite(glowMaterial);
         sunGlow.scale.set(300, 300, 1); 
         scene.add(sunGlow);
+
+        // --- ★★★ 新增：星空系统 ★★★ ---
+        const starsGeometry = new THREE.BufferGeometry();
+        const starsCount = 5000; // 星星数量
+        const posArray = new Float32Array(starsCount * 3);
+        
+        for(let i = 0; i < starsCount * 3; i++) {
+            // 在大范围内随机分布
+            posArray[i] = (Math.random() - 0.5) * 8000; 
+        }
+        starsGeometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+        
+        const starsMaterial = new THREE.PointsMaterial({
+            size: 8, // 星星大小
+            color: 0xffffff,
+            transparent: true,
+            opacity: 0, // 初始隐藏
+            fog: false
+        });
+        const stars = new THREE.Points(starsGeometry, starsMaterial);
+        scene.add(stars);
 
         // ================= 逻辑控制 =================
 
@@ -169,80 +187,120 @@
         let moveState = 0; 
         const SPEED = 0.0005; 
 
-        // ★★★ 核心修改：高度节点定义 ★★★
-        // 0.03 = 刚出海面
-        // 0.20 = 你截图2里那个“半空中”的高度 (之前是0.08，太低了，所以变白早)
-        // 0.40 = 最高点
-        const PHASE_1_END = 0.03; 
-        const PHASE_2_END = 0.20; // ★ 延迟变色点：升到很高了才开始变白
-        const MAX_ELEVATION = 0.4; 
+        // 阶段定义
+        const H_NIGHT_DEEP = -0.20; // 深夜 (星星全亮)
+        const H_HORIZON = -0.02;    // 地平线 (日落开始)
+        const H_HALF = 0.04;        // 半个太阳
+        const H_FULL = 0.10;        // 一个太阳
+        const H_MAX = 0.40;         // 最高点
+
+        // 用于模拟月光的虚拟向量
+        const moonPosition = new THREE.Vector3(-100, 50, -100).normalize(); 
 
         function updateSunPosition() {
             if (moveState !== 0) {
                 elevation += moveState * SPEED;
-                if (elevation > MAX_ELEVATION) elevation = MAX_ELEVATION; 
-                if (elevation < -0.02) elevation = -0.02; 
+                if (elevation > H_MAX) elevation = H_MAX; 
+                // ★ 允许下降到更深的地方，模拟黑夜
+                if (elevation < H_NIGHT_DEEP) elevation = H_NIGHT_DEEP; 
             }
 
             const phi = THREE.MathUtils.degToRad(90 - (elevation * 180)); 
             const theta = THREE.MathUtils.degToRad(180); 
             sun.setFromSphericalCoords(1, phi, theta);
 
+            // 更新天空 (Sky)
             sky.material.uniforms['sunPosition'].value.copy(sun);
-            water.material.uniforms['sunDirection'].value.copy(sun).normalize();
+
+            // 太阳位置
             const sunPos = sun.clone().multiplyScalar(4000);
             sunSphere.position.copy(sunPos);
             sunGlow.position.copy(sunPos);
 
-            // ================== 逻辑调整 ==================
+            // ================== 多阶段逻辑 ==================
 
             let targetScale = 300;
-            let targetGlowColor = new THREE.Color(0xff4400); // 橘红
-            let targetTurbidity = 20; // 默认极高浑浊度 (橘色天)
-            let targetRayleigh = 4;   // 默认极强散射 (红光)
-
+            let targetGlowColor = new THREE.Color(0xff4400); 
+            let targetTurbidity = 20; 
+            let targetRayleigh = 4;
+            let starOpacity = 0;
+            
+            // 颜色定义
             const colOrange = new THREE.Color(0xff2200); 
-            const colGoldWhite = new THREE.Color(0xffffee); 
+            const colGold = new THREE.Color(0xffcc00);   
+            const colWhite = new THREE.Color(0xffffee); 
 
-            // ★ 阶段 1 & 2 (合并)：刚出海面 -> 升到半空 (0 ~ 0.20) ★
-            // 在这个漫长的上升过程中，始终保持“晚霞模式”
-            if (elevation <= PHASE_2_END) {
-                // 大小：从 300 慢慢变大到 600
-                // 虽然颜色不变，但光晕变大能体现“光芒万丈”
-                const t = Math.max(0, (elevation - PHASE_1_END) / (PHASE_2_END - PHASE_1_END));
-                targetScale = THREE.MathUtils.lerp(300, 600, t);
+            // ★ 阶段 0: 黑夜 (-0.2 ~ -0.02)
+            if (elevation < H_HORIZON) {
+                // 计算黑夜深度进度 (0=刚日落, 1=深黑)
+                const nightProgress = (H_HORIZON - elevation) / (H_HORIZON - H_NIGHT_DEEP);
                 
-                // 颜色：强制锁定橘红，不许变白！
+                // 星星渐渐浮现
+                starOpacity = Math.min(1, nightProgress * 1.5);
+                
+                // 太阳和光晕淡出
+                sunSphere.visible = false; // 藏起来
+                sunGlow.visible = true;
+                sunGlow.material.opacity = 1.0 - nightProgress; // 光晕慢慢消失
                 targetGlowColor.copy(colOrange);
                 
-                // 大气：强制锁定高浑浊，不许变蓝！
-                targetTurbidity = 20; 
-                targetRayleigh = 4;
-            } 
-            // ★ 阶段 3: 半空 -> 最高点 (0.20 ~ 0.40) ★
-            // 只有升得非常高了，才开始慢慢变白
-            else {
-                const t = (elevation - PHASE_2_END) / (MAX_ELEVATION - PHASE_2_END);
-                
-                // 大小：600 -> 800
-                targetScale = THREE.MathUtils.lerp(600, 800, t);
-                
-                // 颜色：终于可以变白了
-                targetGlowColor.copy(colOrange).lerp(colGoldWhite, t);
+                // ★★★ 核心：海面光源切换 ★★★
+                // 当完全入夜后，我们将传给海面的光源换成“月光”
+                // 这样海面会泛起冷冷的光，而不是死黑
+                if (nightProgress > 0.5) {
+                    // 模拟月光/星光
+                    water.material.uniforms['sunDirection'].value.copy(moonPosition);
+                    water.material.uniforms['sunColor'].value.setHex(0x8888ff); // 银蓝色冷光
+                } else {
+                    // 余晖
+                    water.material.uniforms['sunDirection'].value.copy(sun).normalize();
+                    water.material.uniforms['sunColor'].value.setHex(0xffffff); 
+                }
 
-                // 大气：终于可以变通透了
-                targetTurbidity = THREE.MathUtils.lerp(20, 2, t);
-                targetRayleigh = THREE.MathUtils.lerp(4, 1, t);
+            } else {
+                // 白天模式：确保太阳显示，星星隐藏
+                sunSphere.visible = true;
+                sunGlow.visible = true;
+                sunGlow.material.opacity = 1;
+                starOpacity = 0;
+                
+                // 恢复海面为太阳光
+                water.material.uniforms['sunDirection'].value.copy(sun).normalize();
+                water.material.uniforms['sunColor'].value.setHex(0xffffff); // 暖白光
+
+                // ★ 阶段 1: 刚出海面 (保持橘红)
+                if (elevation <= H_HALF) {
+                    targetScale = 300;
+                    targetGlowColor.copy(colOrange);
+                    targetTurbidity = 20; targetRayleigh = 4;
+                } 
+                // ★ 阶段 2: 渐变 (橘红->金)
+                else if (elevation <= H_FULL) {
+                    const t = (elevation - H_HALF) / (H_FULL - H_HALF);
+                    targetScale = THREE.MathUtils.lerp(300, 600, t);
+                    targetGlowColor.copy(colOrange).lerp(colGold, t);
+                    targetTurbidity = THREE.MathUtils.lerp(20, 10, t);
+                    targetRayleigh = THREE.MathUtils.lerp(4, 2.5, t);
+                } 
+                // ★ 阶段 3: 白天 (金->白)
+                else {
+                    const t = (elevation - H_FULL) / (H_MAX - H_FULL);
+                    targetScale = THREE.MathUtils.lerp(600, 800, t);
+                    targetGlowColor.copy(colGold).lerp(colWhite, t);
+                    targetTurbidity = THREE.MathUtils.lerp(10, 2, t);
+                    targetRayleigh = THREE.MathUtils.lerp(2.5, 1, t);
+                }
             }
 
-            // 应用计算结果
+            // 应用星星透明度
+            stars.material.opacity = starOpacity;
+            
+            // 应用光晕
             sunGlow.scale.set(targetScale, targetScale, 1);
             sunGlow.material.color.copy(targetGlowColor);
-            
-            // ★ 修复太阳变黑：根据高度手动把太阳颜色“加倍”
-            // 越高越亮，防止被 ToneMapping 压暗
-            const intensity = 1.0 + (elevation * 2.0); 
-            sunSphere.material.color.setScalar(intensity); 
+
+            // 暴力修复太阳亮度
+            sunSphere.material.color.setScalar(2.0); // 强度翻倍
 
             sky.material.uniforms['turbidity'].value = targetTurbidity;
             sky.material.uniforms['rayleigh'].value = targetRayleigh;
@@ -264,7 +322,7 @@
         const canvasCtx = canvasElement.getContext('2d');
 
         function onResults(results) {
-            statusText.innerText = "系统运行中，请展示手势";
+            statusText.innerText = "系统运行中";
             statusText.style.color = "yellow";
             
             canvasCtx.save();
@@ -286,8 +344,8 @@
                     statusText.style.color = "#00ff00";
                 } else if (dist < 0.22) {
                     moveState = -1; 
-                    statusText.innerText = "状态：✊ 夕阳西下";
-                    statusText.style.color = "#ff4400";
+                    statusText.innerText = "状态：✊ 入夜星河";
+                    statusText.style.color = "#55aaff"; // 蓝色提示
                 } else {
                     moveState = 0; 
                     statusText.innerText = "状态：✋ 悬停";
