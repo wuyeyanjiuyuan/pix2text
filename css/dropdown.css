@@ -1,0 +1,71 @@
+/* === 新增：下拉菜单样式 (Apple风格) === */
+.dropdown {
+    position: relative;
+    display: inline-block;
+    height: 100%; /* 继承导航高度 */
+}
+
+.dropdown-trigger {
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    height: 100%;
+    padding: 0 10px;
+}
+
+/* 下拉小箭头 */
+.dropdown-trigger::after {
+    content: "▼";
+    font-size: 10px;
+    margin-left: 6px;
+    opacity: 0.5;
+    transition: transform 0.3s;
+}
+.dropdown:hover .dropdown-trigger::after {
+    transform: rotate(180deg);
+}
+
+/* 菜单盒子 */
+.dropdown-menu {
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%) translateY(10px);
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    min-width: 160px;
+    border-radius: 12px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+    padding: 8px;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.2s ease;
+    z-index: 1000;
+    border: 1px solid rgba(0,0,0,0.05);
+}
+
+/* 显示状态 */
+.dropdown:hover .dropdown-menu {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(-50%) translateY(0);
+}
+
+/* 菜单项 */
+.dropdown-menu a {
+    display: block;
+    padding: 10px 16px;
+    color: #333;
+    font-size: 15px;
+    text-decoration: none;
+    border-radius: 8px;
+    transition: background 0.2s;
+    white-space: nowrap;
+    text-align: center;
+}
+
+.dropdown-menu a:hover {
+    background: #f5f5f7;
+    color: #0071e3;
+}
