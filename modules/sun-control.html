@@ -158,4 +158,164 @@
             transparent: true, 
             blending: THREE.AdditiveBlending,
             opacity: 1.0,
-            depthWrite:
+            depthWrite: false // 不写深度，保证光晕柔和叠加
+        });
+        const sunGlow = new THREE.Sprite(glowMaterial);
+        sunGlow.scale.set(1000, 1000, 1); 
+        scene.add(sunGlow);
+
+        // ================= 逻辑控制 =================
+
+        let elevation = 0.0; 
+        let moveState = 0; 
+        const SPEED = 0.0005; 
+
+        function updateSunPosition() {
+            if (moveState !== 0) {
+                elevation += moveState * SPEED;
+                if (elevation > 0.4) elevation = 0.4; 
+                if (elevation < -0.02) elevation = -0.02; 
+            }
+
+            const phi = THREE.MathUtils.degToRad(90 - (elevation * 180)); 
+            const theta = THREE.MathUtils.degToRad(180); 
+
+            sun.setFromSphericalCoords(1, phi, theta);
+
+            // ★★★ 核心修改：动态大气参数 ★★★
+            // 你的需求：橘红范围要大。
+            // 做法：当太阳低(elevation小)时，大幅增加 turbidity(浑浊度) 和 rayleigh(红光散射)
+            
+            // 进度 0(地平线) -> 1(高空)
+            // 调整分母 0.2，意味着太阳升起一点点，大气层就迅速变通透，
+            // 反之，只要在 0.2 以下，都会保持比较浓的夕阳感
+            const sunProgress = Math.max(0, (elevation + 0.02) / 0.3); 
+            
+            // 浑浊度：低处 20 (极高，造成大范围橘红)，高处 2 (通透)
+            const currentTurbidity = THREE.MathUtils.lerp(20, 2, sunProgress);
+            // 瑞利散射：低处 4 (红光满天)，高处 1 (蓝天)
+            const currentRayleigh = THREE.MathUtils.lerp(4, 1, sunProgress);
+            // 曝光度：低处 0.3 (压暗环境，突出颜色)，高处 0.8 (明亮)
+            const currentExposure = THREE.MathUtils.lerp(0.35, 0.8, sunProgress);
+
+            sky.material.uniforms['turbidity'].value = currentTurbidity;
+            sky.material.uniforms['rayleigh'].value = currentRayleigh;
+            sky.material.uniforms['sunPosition'].value.copy(sun);
+            
+            renderer.toneMappingExposure = currentExposure;
+
+            // 更新海洋
+            water.material.uniforms['sunDirection'].value.copy(sun).normalize();
+
+            // 更新太阳位置
+            const sunPos = sun.clone().multiplyScalar(4000);
+            sunSphere.position.copy(sunPos);
+            sunGlow.position.copy(sunPos);
+
+            // ★★★ 核心修改：太阳颜色分层控制 ★★★
+            
+            // 1. 内核颜色：金黄 -> 亮白 (这就是你想要的有轮廓的金黄太阳)
+            // 永远不让它变红，最深只到深金黄
+            const coreGold = new THREE.Color(0xffaa00); // 地平线颜色：深金黄
+            const coreWhite = new THREE.Color(0xffffee); // 高空颜色：亮白
+            sunSphere.material.color.copy(coreGold).lerp(coreWhite, sunProgress);
+
+            // 2. 光晕颜色：深朱红 -> 橙黄 -> 淡白
+            // 负责制造那个“黑-橘”的变化
+            const glowRed = new THREE.Color(0xff2200);   // 地平线：深朱红
+            const glowYellow = new THREE.Color(0xffdd00); // 升起后：黄
+            sunGlow.material.color.copy(glowRed).lerp(glowYellow, sunProgress);
+
+            // 3. 光晕大小调整
+            // 太阳越低，光晕越大（模拟大气散射晕开的效果）
+            const scale = 1200 - (sunProgress * 600); 
+            sunGlow.scale.set(scale, scale, 1);
+            
+            // 更新环境反射
+            scene.environment = pmremGenerator.fromScene(sky).texture;
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            water.material.uniforms[ 'time' ].value += 1.0 / 60.0;
+            updateSunPosition();
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // ================= AI 手势识别 =================
+        const videoElement = document.getElementById('input-video');
+        const canvasElement = document.getElementById('output-canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+
+        function onResults(results) {
+            statusText.innerText = "系统运行中，请展示手势";
+            statusText.style.color = "yellow";
+            
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
+                drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: '#00FF00', lineWidth: 2});
+                drawLandmarks(canvasCtx, landmarks, {color: '#FF0000', lineWidth: 1, radius: 2});
+
+                const wrist = landmarks[0];
+                const middleTip = landmarks[12];
+                const dist = Math.sqrt(Math.pow(middleTip.x - wrist.x, 2) + Math.pow(middleTip.y - wrist.y, 2));
+
+                if (dist > 0.32) {
+                    moveState = 1; 
+                    statusText.innerText = "状态：🖐️ 旭日东升 (金光万丈)";
+                    statusText.style.color = "#00ff00";
+                } else if (dist < 0.22) {
+                    moveState = -1; 
+                    statusText.innerText = "状态：✊ 夕阳西下 (橙红渐变)";
+                    statusText.style.color = "#ff4400";
+                } else {
+                    moveState = 0; 
+                    statusText.innerText = "状态：✋ 悬停 (欣赏当前高度)";
+                    statusText.style.color = "white";
+                }
+            } else {
+                moveState = 0;
+            }
+            canvasCtx.restore();
+        }
+
+        const hands = new Hands({locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+        }});
+
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+
+        hands.onResults(onResults);
+
+        statusText.innerText = "正在启动摄像头...";
+        const cameraUtils = new Camera(videoElement, {
+            onFrame: async () => { await hands.send({image: videoElement}); },
+            width: 320,
+            height: 240
+        });
+        
+        cameraUtils.start();
+
+        window.addEventListener('resize', () => {
+            if(!container) return;
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize( container.clientWidth, container.clientHeight );
+        });
+
+    } catch (e) {
+        statusText.innerText = "❌ 初始化错误: " + e.message;
+        statusText.style.color = "red";
+        console.error(e);
+    }
+</script>
