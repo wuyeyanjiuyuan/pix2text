@@ -96,13 +96,36 @@
 <script src="js/hands.js"></script>
 
 <script>
-    // ================= 1. 3D 场景初始化 =================
+    // 获取状态栏，用于显示诊断信息
+    const statusText = document.getElementById('status-text');
+    
+    // --- 0. 自我诊断：检查 JS 是否加载成功 ---
+    function checkDependencies() {
+        let missing = [];
+        if (typeof THREE === 'undefined') missing.push('Three.js');
+        if (typeof Hands === 'undefined') missing.push('Hands.js');
+        if (typeof Camera === 'undefined') missing.push('CameraUtils.js');
+        
+        if (missing.length > 0) {
+            statusText.innerText = "❌ 错误：找不到文件 " + missing.join(', ');
+            statusText.style.color = "red";
+            throw new Error("依赖丢失");
+        }
+    }
+
+    try {
+        checkDependencies();
+    } catch (e) {
+        console.error(e);
+        // 如果这里报错，说明你的 js 文件夹位置不对，或者文件名不对
+    }
+
+    // ================= 1. 3D 场景初始化 (保持不变) =================
     const container = document.getElementById('three-canvas');
     const width = container.clientWidth;
     const height = container.clientHeight;
 
     const scene = new THREE.Scene();
-    // 增加雾气效果，这是融合神器！让远处的太阳和背景融为一体
     scene.fog = new THREE.FogExp2(0x000000, 0.02); 
 
     const camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 1000);
@@ -113,33 +136,25 @@
     renderer.setPixelRatio(window.devicePixelRatio);
     container.appendChild(renderer.domElement);
 
-    // ================= 2. 核心对象构建 =================
-
-    // --- A. 动态背景墙 (用来解决融合问题的关键) ---
-    // 我们不用 scene.background，而是用一个巨大的平面
+    // --- 动态背景墙 ---
     const bgGeometry = new THREE.PlaneGeometry(200, 120); 
-    const bgMaterial = new THREE.MeshBasicMaterial({ 
-        color: 0xffffff,     // 初始颜色
-        transparent: true,   // 开启透明
-        opacity: 0.8         // ★ 关键：稍微透一点黑底，增加质感
-    });
+    const bgMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8 });
     const bgMesh = new THREE.Mesh(bgGeometry, bgMaterial);
-    bgMesh.position.z = -50; // 放在最后面
+    bgMesh.position.z = -50;
     scene.add(bgMesh);
 
-    // --- B. 太阳主体 ---
+    // --- 太阳主体 ---
     const sunGeometry = new THREE.SphereGeometry(3, 64, 64);
     const sunMaterial = new THREE.MeshBasicMaterial({ color: 0xffaa00 });
     const sunMesh = new THREE.Mesh(sunGeometry, sunMaterial);
     scene.add(sunMesh);
 
-    // --- C. 太阳光晕 (柔和版) ---
+    // --- 太阳光晕 ---
     function createGlowTexture() {
         const canvas = document.createElement('canvas');
         canvas.width = 128; canvas.height = 128;
         const ctx = canvas.getContext('2d');
         const gradient = ctx.createRadialGradient(64,64,0, 64,64,64);
-        // 调整光晕颜色，让它更像大气层
         gradient.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
         gradient.addColorStop(0.2, 'rgba(255, 200, 100, 0.6)');
         gradient.addColorStop(0.5, 'rgba(255, 100, 50, 0.2)');
@@ -148,31 +163,21 @@
         ctx.fillRect(0,0,128,128);
         return new THREE.CanvasTexture(canvas);
     }
-    const sunGlow = new THREE.Sprite(new THREE.SpriteMaterial({ 
-        map: createGlowTexture(), 
-        color: 0xffaa00, 
-        transparent: true, 
-        blending: THREE.AdditiveBlending 
-    }));
-    sunGlow.scale.set(25, 25, 1); // 光晕搞大一点，增加氛围
+    const sunGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: createGlowTexture(), color: 0xffaa00, transparent: true, blending: THREE.AdditiveBlending }));
+    sunGlow.scale.set(25, 25, 1);
     sunMesh.add(sunGlow);
 
-    // ================= 3. 场景资源管理 =================
-    
+    // --- 资源加载 ---
     const textureLoader = new THREE.TextureLoader();
-
-    // ★★★ 这里的图片建议找“插画风格”或“颜色干净”的图 ★★★
-    // 为了演示融合效果，我特意挑了色调比较统一的图
     const bgImages = {
-        'ocean': 'https://images.unsplash.com/photo-1518837695005-2083093ee35b?q=80&w=1000&auto=format&fit=crop', // 比较抽象的海
-        'city':  'https://images.unsplash.com/photo-1480714378408-67cf0d13bc1b?q=80&w=1000&auto=format&fit=crop', // 纽约剪影
-        'forest': 'https://images.unsplash.com/photo-1511497584788-876760111969?q=80&w=1000&auto=format&fit=crop' // 迷雾森林
+        'ocean': 'https://images.unsplash.com/photo-1518837695005-2083093ee35b?q=80&w=1000&auto=format&fit=crop',
+        'city':  'https://images.unsplash.com/photo-1480714378408-67cf0d13bc1b?q=80&w=1000&auto=format&fit=crop',
+        'forest': 'https://images.unsplash.com/photo-1511497584788-876760111969?q=80&w=1000&auto=format&fit=crop'
     };
 
     window.changeScene = function(key) {
         document.querySelectorAll('.bg-btn').forEach(btn => btn.classList.remove('active'));
         event.target.classList.add('active');
-
         textureLoader.load(bgImages[key], function(texture) {
             bgMesh.material.map = texture;
             bgMesh.material.needsUpdate = true;
@@ -180,8 +185,7 @@
     }
     changeScene('ocean'); 
 
-    // ================= 4. 动画与融合逻辑 =================
-
+    // --- 动画逻辑 ---
     let currentHeight = -8; 
     let moveState = 0;      
     const SPEED = 0.08;     
@@ -190,51 +194,41 @@
 
     function animate() {
         requestAnimationFrame(animate);
-
         if (moveState !== 0) {
             currentHeight += moveState * SPEED;
             if (currentHeight > MAX_H) currentHeight = MAX_H;
             if (currentHeight < MIN_H) currentHeight = MIN_H;
         }
-
         sunMesh.position.y = currentHeight;
 
-        // --- ★ 大师级融合算法 ★ ---
-        const progress = (currentHeight - MIN_H) / (MAX_H - MIN_H); // 0(底) -> 1(顶)
-
-        // 1. 太阳变色
+        const progress = (currentHeight - MIN_H) / (MAX_H - MIN_H);
         const sunColor = new THREE.Color(0xff3300).lerp(new THREE.Color(0xffffcc), progress);
         sunMaterial.color.copy(sunColor);
         sunGlow.material.color.copy(sunColor);
 
-        // 2. 背景墙“染色” (最关键的一步！)
-        // 太阳落下时(progress=0)，背景会被染成黑色/深蓝 (0x333333)
-        // 太阳升起时(progress=1)，背景恢复原色 (0xffffff)
         const bgTint = new THREE.Color(0x222244).lerp(new THREE.Color(0xffffff), progress);
         bgMesh.material.color.copy(bgTint);
 
-        // 3. 雾气联动
-        // 太阳落下，雾气变浓黑；太阳升起，雾气变淡蓝
         const fogColor = new THREE.Color(0x000000).lerp(new THREE.Color(0x224488), progress);
         scene.fog.color.copy(fogColor);
-        scene.fog.density = 0.02 - (progress * 0.015); // 高处雾淡，低处雾浓
-
+        scene.fog.density = 0.02 - (progress * 0.015);
         renderer.render(scene, camera);
     }
     animate();
 
-    // ================= 5. AI 手势识别 (保持不变) =================
-    // ... 这里把之前的 MediaPipe 代码完整复制过来 ...
-    // 为了节省篇幅，这里省略，请保留你之前下载好的 js 引用和逻辑
-    // 记得保留 videoElement, canvasElement, onResults, Hands 初始化等代码
+    // ================= 4. AI 手势识别 (带错误诊断) =================
     
-    // ↓↓↓↓↓↓ 这里补全为了让你直接复制能跑 ↓↓↓↓↓↓
     const videoElement = document.getElementById('input-video');
     const canvasElement = document.getElementById('output-canvas');
     const canvasCtx = canvasElement.getContext('2d');
-    const statusText = document.getElementById('status-text');
 
     function onResults(results) {
+        // 一旦成功识别到一次，就说明模型加载完毕了
+        if(statusText.innerText.includes("加载模型")) {
+            statusText.innerText = "状态：系统就绪，请伸手";
+            statusText.style.color = "yellow";
+        }
+
         canvasCtx.save();
         canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
         if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
@@ -260,17 +254,51 @@
                 moveState = 0; statusText.innerText = "状态：✋ 保持";
             }
         } else {
-            moveState = 0; statusText.innerText = "状态：等待手势..."; statusText.style.color = "yellow";
+            // 没检测到手的时候，不需要疯狂刷新文字，提升性能
+            if(moveState !== 0) {
+                moveState = 0; statusText.innerText = "状态：✋ 等待手势..."; statusText.style.color = "yellow";
+            }
         }
         canvasCtx.restore();
     }
 
+    // ★★★ 重点：模型加载配置 ★★★
+    statusText.innerText = "正在下载 AI 模型 (约 10MB)...";
+    
     const hands = new Hands({locateFile: (file) => {
-        return `https://unpkg.com/@mediapipe/hands/${file}`;
+        // 使用 jsdelivr，这在国内比 unpkg 稍微稳定一点点
+        return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
     }});
 
     hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
     hands.onResults(onResults);
-    const cameraUtils = new Camera(videoElement, { onFrame: async () => { await hands.send({image: videoElement}); }, width: 320, height: 240 });
-    cameraUtils.start();
+
+    // ★★★ 启动摄像头并捕获错误 ★★★
+    try {
+        const cameraUtils = new Camera(videoElement, {
+            onFrame: async () => {
+                await hands.send({image: videoElement});
+            },
+            width: 320,
+            height: 240
+        });
+        
+        cameraUtils.start()
+            .then(() => {
+                console.log("摄像头已启动");
+                // 只有当摄像头真正启动后，才显示模型加载中
+                if(!statusText.innerText.includes("错误")) {
+                    statusText.innerText = "摄像头已开，正在加载 AI 模型...";
+                }
+            })
+            .catch(err => {
+                statusText.innerText = "❌ 摄像头启动失败！请允许权限";
+                statusText.style.color = "red";
+                console.error(err);
+            });
+            
+    } catch(err) {
+        statusText.innerText = "❌ 初始化失败: " + err.message;
+        statusText.style.color = "red";
+    }
 </script>
