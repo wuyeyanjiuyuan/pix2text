@@ -8,7 +8,6 @@
 
   <!-- 样式 -->
   <link rel="stylesheet" href="css/index.css">
-  <link rel="stylesheet" href="css/lunbo.css">
   <link rel="stylesheet" href="css/search-form.css">
   <link rel="stylesheet" href="./live2d/assets/waifu.css" />
   <!-- 不再需要 loading.css，如果里面有 .module {opacity:0} 就别引入了 -->
@@ -35,7 +34,7 @@
     </div>
 
     <nav class="nav-links">
-      <a href="https://wuyeyanjiuyuan.github.io/pix2text" target="_blank">Pix2Text</a>
+      <a href="https://wuyeyanjiuyuan.github.io/pix2text" target="_blank">Gesture</a>
       <a href="https://space.bilibili.com/13308970" target="_blank">Bilibili</a>
       <a href="https://www.cnki.net/" target="_blank">CNKI</a>
     </nav>
@@ -48,10 +47,19 @@
 
 <!-- 主题内容 -->
  <main id="main-container">
-  <section class="tool-card">
-    <h2 style="opacity:.4; text-align:center; padding:40px 0;">这里以后放子页面内容</h2>
-  </section>
-</main>
+    <section class="tool-card">
+      <div style="margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid #eee;">
+        <h1 style="font-size: 24px; color: #333;">Web 3.0 手势交互实验</h1>
+        <p style="color: #666; font-size: 14px; margin-top: 5px;">
+          调用摄像头捕捉手势 · 实时渲染光影粒子 · 请允许摄像头权限
+        </p>
+      </div>
+
+      <div id="module-sun-control" style="min-height: 500px;">
+        <p style="text-align:center; color:#999; padding: 50px;">正在加载 3D 引擎...</p>
+      </div>
+    </section>
+  </main>
 
 
   <!-- Live2D 模块（内容里有 waifu，依旧固定在右下角） -->
@@ -72,7 +80,8 @@
       const modules = {
         "#module-search":   "./modules/search.html",
         "#module-live2d":   "./modules/live2d.html",
-        "#module-effects":  "./modules/effects.html"
+        "#module-effects":  "./modules/effects.html",
+        "#module-sun-control": "./modules/sun-control.html"
       };
 
       for (let id in modules) {
