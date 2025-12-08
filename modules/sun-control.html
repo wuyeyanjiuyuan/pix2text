@@ -29,8 +29,8 @@
 
 <div id="sun-interaction-container">
     <div class="ui-overlay">
-        <div id="status-text" class="status-badge">正在初始化随机星空...</div>
-        <div style="font-size:12px; opacity:0.9">✋ 张开：旭日东升 | ✊ 握拳：随机星夜</div>
+        <div id="status-text" class="status-badge">正在初始化场景...</div>
+        <div style="font-size:12px; opacity:0.9">✋ 张开：旭日东升 | ✊ 握拳：星河入梦</div>
     </div>
     <div class="cam-preview"><canvas id="output-canvas"></canvas></div>
     <video id="input-video" playsinline></video>
@@ -160,14 +160,14 @@
         scene.add(sunGlow);
 
         // --- ★★★ 核心修改：动态随机星空系统 ★★★ ---
-        const starsCount = 4000;
+        const starsCount = 2000;
         const starsGeometry = new THREE.BufferGeometry();
         // 初始化空位置，稍后在 randomizeStars 里填充
         const posArray = new Float32Array(starsCount * 3);
         starsGeometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
         
         const starsMaterial = new THREE.PointsMaterial({
-            size: 3, // ★ 改小：从8改为3，解决色块问题
+            size: 6, // ★ 改小：从8改为3，解决色块问题
             color: 0xffffff,
             transparent: true,
             opacity: 0,
