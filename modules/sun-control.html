@@ -1,4 +1,5 @@
 <style>
+    /* 容器样式 */
     #sun-interaction-container {
         position: relative; width: 100%; height: 600px;
         background: #000; border-radius: 12px; overflow: hidden;
@@ -28,8 +29,8 @@
 
 <div id="sun-interaction-container">
     <div class="ui-overlay">
-        <div id="status-text" class="status-badge">正在初始化光影引擎...</div>
-        <div style="font-size:12px; opacity:0.9">✋ 张开：旭日金光 | ✊ 握拳：落日余晖</div>
+        <div id="status-text" class="status-badge">正在初始化三阶段光影引擎...</div>
+        <div style="font-size:12px; opacity:0.9">✋ 张开：旭日东升 | ✊ 握拳：夕阳西下</div>
     </div>
     <div class="cam-preview"><canvas id="output-canvas"></canvas></div>
     <video id="input-video" playsinline></video>
@@ -47,7 +48,7 @@
 <script>
     const statusText = document.getElementById('status-text');
 
-    // 生成海面纹理
+    // 1. 海面纹理 (保持不变)
     function createWaterNormalTexture() {
         const size = 512;
         const canvas = document.createElement('canvas');
@@ -69,22 +70,16 @@
         return texture;
     }
 
-    // ★★★ 核心修复1：光晕纹理重绘 ★★★
-    // 解决“太阳像黑球”的问题：中心必须是极亮的纯白，才能和太阳本体融合
+    // 2. 光晕纹理 (保持中心纯白，以融合太阳)
     function createGlowTexture() {
         const canvas = document.createElement('canvas');
         canvas.width = 128; canvas.height = 128;
         const ctx = canvas.getContext('2d');
         const gradient = ctx.createRadialGradient(64,64,0, 64,64,64);
-        
-        // 0.0 - 0.15: 纯白核心 (模拟过曝，融合本体)
         gradient.addColorStop(0, 'rgba(255, 255, 255, 1)'); 
-        gradient.addColorStop(0.15, 'rgba(255, 255, 255, 1)'); 
-        // 0.15 - 0.4: 高亮过渡区
-        gradient.addColorStop(0.4, 'rgba(255, 240, 200, 0.8)'); 
-        // 边缘柔和
+        gradient.addColorStop(0.2, 'rgba(255, 255, 255, 0.8)'); 
+        gradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.2)'); 
         gradient.addColorStop(1, 'rgba(0, 0, 0, 0)'); 
-        
         ctx.fillStyle = gradient;
         ctx.fillRect(0,0,128,128);
         return new THREE.CanvasTexture(canvas);
@@ -100,6 +95,9 @@
         const height = container.clientHeight;
 
         const scene = new THREE.Scene();
+        // 稍微压低雾气密度，让远处清晰一点
+        scene.fog = new THREE.FogExp2(0x000000, 0.0005); 
+
         const camera = new THREE.PerspectiveCamera(55, width / height, 1, 20000);
         camera.position.set(30, 30, 100);
 
@@ -114,7 +112,7 @@
         const pmremGenerator = new THREE.PMREMGenerator(renderer);
         pmremGenerator.compileEquirectangularShader();
 
-        // 海洋
+        // --- 海洋 ---
         const waterGeometry = new THREE.PlaneGeometry(10000, 10000);
         const water = new THREE.Water(
             waterGeometry,
@@ -132,7 +130,7 @@
         water.rotation.x = - Math.PI / 2;
         scene.add(water);
 
-        // 天空
+        // --- 天空 ---
         const sky = new THREE.Sky();
         sky.scale.setScalar(10000);
         scene.add(sky);
@@ -142,97 +140,122 @@
 
         const sun = new THREE.Vector3();
 
-        // ★★★ 核心修复2：太阳本体与光晕 ★★★
-        
-        // 1. 太阳本体 (Disk) - 尺寸稍微调小，让光晕包住它
-        const sunGeometry = new THREE.SphereGeometry(50, 32, 32); 
-        // 使用 BasicMaterial 保证自发光，不受光照影响变黑
-        const sunMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff }); 
+        // --- 太阳本体 (核心修复1：解决黑球) ---
+        // 半径 60，对应你的“一个太阳大小”
+        const sunGeometry = new THREE.SphereGeometry(60, 32, 32); 
+        const sunMaterial = new THREE.MeshBasicMaterial({ 
+            color: 0xffffff, // 强制纯白
+            fog: false       // ★ 关键：关闭雾气影响，防止变黑
+        });
         const sunSphere = new THREE.Mesh(sunGeometry, sunMaterial);
         scene.add(sunSphere);
 
-        // 2. 太阳光晕 (Glow)
+        // --- 太阳光晕 ---
         const glowMaterial = new THREE.SpriteMaterial({ 
             map: createGlowTexture(), 
-            color: 0xffaa00, // 初始颜色
+            color: 0xff4400, 
             transparent: true, 
-            blending: THREE.AdditiveBlending, // 关键：加法混合，越叠越亮
+            blending: THREE.AdditiveBlending,
             opacity: 1.0,
-            depthWrite: false
+            depthWrite: false,
+            fog: false // 光晕也不受雾气影响，保持透亮
         });
         const sunGlow = new THREE.Sprite(glowMaterial);
-        // 初始大小设定
-        sunGlow.scale.set(600, 600, 1); 
+        sunGlow.scale.set(300, 300, 1); 
         scene.add(sunGlow);
 
         // ================= 逻辑控制 =================
 
         let elevation = 0.0; 
         let moveState = 0; 
-        const SPEED = 0.0001; 
+        const SPEED = 0.0005; 
+
+        // ★ 定义关键高度节点 (单位：弧度) ★
+        const PHASE_1_END = 0.03; // 半个太阳高度 (保持橘红)
+        const PHASE_2_END = 0.08; // 一个太阳高度 (渐变完成)
+        const MAX_ELEVATION = 0.4; // 最高点
 
         function updateSunPosition() {
             if (moveState !== 0) {
                 elevation += moveState * SPEED;
-                if (elevation > 0.4) elevation = 0.4; 
+                if (elevation > MAX_ELEVATION) elevation = MAX_ELEVATION; 
                 if (elevation < -0.02) elevation = -0.02; 
             }
 
             const phi = THREE.MathUtils.degToRad(90 - (elevation * 180)); 
             const theta = THREE.MathUtils.degToRad(180); 
-
             sun.setFromSphericalCoords(1, phi, theta);
 
-            // ★★★ 核心修复3：调整过渡曲线 (拉长橘红范围) ★★★
-            // 之前的分母是 0.3，导致升一点点就变白了。
-            // 现在改为 0.6，意味着太阳要升得很高，才会完全变成白昼。
-            // 这样在低空（截图位置）依然保持强烈的晚霞感。
-            const sunProgress = Math.max(0, (elevation + 0.02) / 0.6); 
-
-            // 大气参数：保持高 turbidity 以维持橘红漫射
-            // 瑞利散射：从 4.0 (极红) -> 1.0 (蓝)
-            const currentRayleigh = THREE.MathUtils.lerp(4.0, 1.0, sunProgress);
-            const currentTurbidity = THREE.MathUtils.lerp(15, 5, sunProgress);
-            
-            sky.material.uniforms['turbidity'].value = currentTurbidity;
-            sky.material.uniforms['rayleigh'].value = currentRayleigh;
+            // 基础更新
             sky.material.uniforms['sunPosition'].value.copy(sun);
-            
             water.material.uniforms['sunDirection'].value.copy(sun).normalize();
-
             const sunPos = sun.clone().multiplyScalar(4000);
             sunSphere.position.copy(sunPos);
             sunGlow.position.copy(sunPos);
 
-            // ★★★ 核心修复4：颜色融合逻辑 ★★★
-            
-            // A. 太阳本体：永远保持高亮
-            // 低空：亮金黄 (不再是深红，防止变黑球) -> 高空：纯白
-            const coreGolden = new THREE.Color(0xffcc00); 
-            const coreWhite = new THREE.Color(0xffffff);
-            sunSphere.material.color.copy(coreGolden).lerp(coreWhite, sunProgress);
+            // ================== 三阶段光影逻辑 (严格执行你的需求) ==================
 
-            // B. 光晕颜色：负责制造氛围
-            // 低空：深橘红 (Reference Pic 2) -> 高空：金黄
-            const glowOrangeRed = new THREE.Color(0xff3300); // 极红
-            const glowGold = new THREE.Color(0xffaa00);      // 金黄
-            
-            // 使用更平滑的插值：在 progress 0.3 (截图高度) 左右依然偏红
-            if(sunProgress < 0.5) {
-                 // 前半段：红 -> 橘
-                 sunGlow.material.color.copy(glowOrangeRed).lerp(glowGold, sunProgress * 2);
-            } else {
-                 // 后半段：橘 -> 金
-                 sunGlow.material.color.copy(glowGold); 
+            let targetScale = 300;
+            let targetGlowColor = new THREE.Color(0xff4400); // 橘红
+            let targetTurbidity = 10;
+            let targetRayleigh = 3;
+
+            // 颜色定义
+            const colOrange = new THREE.Color(0xff2200); // 深橘
+            const colGoldWhite = new THREE.Color(0xffffee); // 高亮金白
+
+            // ★ 阶段 1: 刚出海面 -> 半个太阳高度 (0 ~ 0.03) ★
+            // 需求：光晕300不变，橘红色不变，天空光晕保持
+            if (elevation <= PHASE_1_END) {
+                targetScale = 300;
+                targetGlowColor.copy(colOrange);
+                
+                // 大气保持高浑浊，维持晚霞感
+                targetTurbidity = 20; 
+                targetRayleigh = 4;
+            } 
+            // ★ 阶段 2: 半个太阳 -> 一个太阳高度 (0.03 ~ 0.08) ★
+            // 需求：光晕 300->600，颜色 橘红->金白
+            else if (elevation <= PHASE_2_END) {
+                // 计算此阶段进度 (0~1)
+                const t = (elevation - PHASE_1_END) / (PHASE_2_END - PHASE_1_END);
+                
+                // 大小渐变 300 -> 600
+                targetScale = THREE.MathUtils.lerp(300, 600, t);
+                
+                // 颜色渐变 橘 -> 金白
+                targetGlowColor.copy(colOrange).lerp(colGoldWhite, t);
+
+                // 大气开始变通透
+                targetTurbidity = THREE.MathUtils.lerp(20, 5, t);
+                targetRayleigh = THREE.MathUtils.lerp(4, 1.5, t);
+            } 
+            // ★ 阶段 3: 一个太阳 -> 最高点 (0.08 ~ 0.4) ★
+            // 需求：光晕 600->800，一直保持金白
+            else {
+                // 计算此阶段进度
+                const t = (elevation - PHASE_2_END) / (MAX_ELEVATION - PHASE_2_END);
+                
+                // 大小渐变 600 -> 800
+                targetScale = THREE.MathUtils.lerp(600, 800, t);
+                
+                // 颜色保持金白
+                targetGlowColor.copy(colGoldWhite);
+
+                // 大气完全通透
+                targetTurbidity = 2;
+                targetRayleigh = 1;
             }
 
-            // C. 锁定光晕大小 (解决问题3)
-            // 之前会变小很多，现在只做微小的呼吸，几乎不变
-            const baseScale = 600;
-            // 稍微变化一点点 (1200 -> 1000)，保持视觉张力
-            const scale = baseScale - (sunProgress * 200); 
-            sunGlow.scale.set(scale, scale, 1);
+            // 应用计算结果
+            sunGlow.scale.set(targetScale, targetScale, 1);
+            sunGlow.material.color.copy(targetGlowColor);
             
+            // 天空参数应用
+            sky.material.uniforms['turbidity'].value = targetTurbidity;
+            sky.material.uniforms['rayleigh'].value = targetRayleigh;
+
+            // 环境反射更新
             scene.environment = pmremGenerator.fromScene(sky).texture;
         }
 
@@ -268,15 +291,15 @@
 
                 if (dist > 0.32) {
                     moveState = 1; 
-                    statusText.innerText = "状态：🖐️ 旭日东升 (金光万丈)";
+                    statusText.innerText = "状态：🖐️ 旭日东升";
                     statusText.style.color = "#00ff00";
                 } else if (dist < 0.22) {
                     moveState = -1; 
-                    statusText.innerText = "状态：✊ 夕阳西下 (橘红渐变)";
+                    statusText.innerText = "状态：✊ 夕阳西下";
                     statusText.style.color = "#ff4400";
                 } else {
                     moveState = 0; 
-                    statusText.innerText = "状态：✋ 悬停 (欣赏当前高度)";
+                    statusText.innerText = "状态：✋ 悬停";
                     statusText.style.color = "white";
                 }
             } else {
@@ -286,7 +309,7 @@
         }
 
         const hands = new Hands({locateFile: (file) => {
-             // 目前网络恢复了，可以暂时用 CDN，或者按上次说的改成 js/${file}
+            // 建议改回本地 return `js/${file}`; 
             return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
         }});
         hands.setOptions({maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5});
