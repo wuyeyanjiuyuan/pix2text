@@ -1,7 +1,7 @@
 <style>
     /* === 整体布局 === */
     #drone-app {
-        position: relative; /* 关键：让弹窗基于这个容器定位 */
+        position: relative;
         display: flex;
         width: 100%;
         height: 600px;
@@ -23,14 +23,22 @@
     
     .drone-overlay {
         position: absolute; top: 20px; left: 20px; pointer-events: none; z-index: 10;
+        display: flex; flex-direction: column; gap: 5px;
     }
+    .status-row { display: flex; gap: 10px; align-items: center; }
     .status-tag {
         background: rgba(0, 255, 255, 0.1); border: 1px solid cyan;
         color: cyan; padding: 5px 10px; border-radius: 4px;
-        font-size: 14px; text-shadow: 0 0 5px cyan; margin-bottom: 5px;
-        transition: all 0.3s;
+        font-size: 14px; text-shadow: 0 0 5px cyan;
+        transition: all 0.3s; white-space: nowrap;
     }
-    .gesture-hint { font-size:12px; color:#888; margin-top:5px; background: rgba(0,0,0,0.5); padding: 5px; border-radius: 4px;}
+    .info-tag {
+        background: rgba(255, 255, 255, 0.1); border: 1px solid #666;
+        color: #ccc; padding: 5px 10px; border-radius: 4px;
+        font-size: 12px; white-space: nowrap;
+    }
+    
+    .gesture-hint { font-size:12px; color:#888; background: rgba(0,0,0,0.5); padding: 5px; border-radius: 4px;}
 
     .cam-preview-box {
         position: absolute; bottom: 10px; left: 10px;
@@ -50,11 +58,8 @@
         user-select: none;
         transition: opacity 0.3s;
     }
-    /* 锁定状态样式 */
     #controls-panel.ui-locked {
-        opacity: 0.5;
-        pointer-events: none;
-        filter: grayscale(1);
+        opacity: 0.5; pointer-events: none; filter: grayscale(1);
     }
 
     .panel-section { padding: 15px; border-bottom: 1px solid #333; }
@@ -63,6 +68,13 @@
     .input-row label { font-size: 12px; }
     input[type="number"] { width: 50px; background: #333; border: none; color: white; padding: 4px; border-radius: 3px; }
     input[type="checkbox"] { accent-color: cyan; }
+
+    .btn-start-auto {
+        display: none; padding: 4px 10px; background: #00ff00; color: #000;
+        border: none; border-radius: 4px; font-size: 11px; font-weight: bold;
+        cursor: pointer; margin-right: 10px; box-shadow: 0 0 5px rgba(0,255,0,0.4);
+    }
+    .btn-start-auto:hover { background: #66ff66; box-shadow: 0 0 10px rgba(0,255,0,0.6); }
 
     /* 积木时间轴 */
     #timeline-container { flex: 1; overflow-y: auto; padding: 15px; background: #151515; }
@@ -90,20 +102,14 @@
     .add-btn:hover { border-color: cyan; color: cyan; }
 
     /* === 弹窗 (Popup) === */
-    /* 遮罩：只覆盖 drone-app */
     #popup-overlay {
         display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
         background: rgba(0,0,0,0.7); z-index: 90; backdrop-filter: blur(2px);
     }
-    /* 弹窗主体 */
     #config-popup {
         display: none;
-        position: absolute; 
-        top: 50%; left: 50%; 
-        transform: translate(-50%, -50%); /* 完美居中 */
-        width: 300px; 
-        background: #252525; 
-        border: 1px solid #444;
+        position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+        width: 320px; background: #252525; border: 1px solid #444;
         box-shadow: 0 20px 50px rgba(0,0,0,0.9);
         z-index: 100; border-radius: 12px; padding: 20px;
     }
@@ -111,22 +117,27 @@
     .popup-row label { display: block; font-size: 12px; color: #aaa; margin-bottom: 5px; }
     select, input[type="text"] { width: 100%; background: #111; border: 1px solid #444; color: white; padding: 8px; border-radius: 4px; box-sizing: border-box; }
     
-    /* 颜色管理器 */
     .color-manager { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; background: #1a1a1a; padding: 5px; border-radius: 4px; min-height: 30px;}
     .color-chip { width: 24px; height: 24px; border-radius: 4px; border: 1px solid #555; cursor: pointer; position: relative; }
     .color-chip:hover::after { content: 'x'; position: absolute; top:-5px; right:-5px; font-size:10px; background:red; color:white; width:12px; height:12px; border-radius:50%; display:flex; justify-content:center; align-items:center; }
     .btn-add-color { width: 24px; height: 24px; border: 1px dashed #666; color: #666; display: flex; justify-content: center; align-items: center; cursor: pointer; border-radius: 4px; }
     
-    .popup-btns { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; border-top: 1px solid #333; padding-top: 15px; }
+    .popup-btns { display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px; border-top: 1px solid #333; padding-top: 15px; }
     .btn { padding: 6px 16px; border-radius: 4px; border: none; cursor: pointer; font-size: 12px; }
     .btn-cancel { background: #333; color: #ccc; }
     .btn-confirm { background: cyan; color: #000; font-weight: bold; }
+    
+    /* 预估提示 */
+    #est-hint { font-size: 11px; color: #666; text-align: right; margin-top: -10px; margin-bottom: 10px; height: 16px;}
 </style>
 
 <div id="drone-app">
     <div id="stage-container">
         <div class="drone-overlay">
-            <div id="sys-status" class="status-tag">System Ready - 等待设置</div>
+            <div class="status-row">
+                <div id="sys-status" class="status-tag">System Ready</div>
+                <div id="sys-info" class="info-tag">🛸 400 | ⚡ 8.0</div>
+            </div>
             <div class="gesture-hint">
                 👋 抬手: 起飞 | ⬅️ 左挥: 上一幕 | ➡️ 右挥: 下一幕 | 👇 下挥: 降落
             </div>
@@ -141,7 +152,7 @@
             <div class="panel-title">飞行参数</div>
             <div class="input-row">
                 <label>无人机数量</label>
-                <input type="number" id="inp-count" value="400" min="100" max="1000">
+                <input type="number" id="inp-count" value="400" min="50" max="2000" step="50">
             </div>
             <div class="input-row">
                 <label>飞行速度</label>
@@ -149,7 +160,10 @@
             </div>
             <div class="input-row">
                 <label>自动变换</label>
-                <input type="checkbox" id="inp-auto">
+                <div style="display:flex; align-items:center;">
+                    <button id="btn-auto-start" class="btn-start-auto">▶ 启动</button>
+                    <input type="checkbox" id="inp-auto">
+                </div>
             </div>
             <div class="input-row" id="row-interval" style="opacity:0.5; pointer-events:none;">
                 <label>每幕时长(s)</label>
@@ -158,8 +172,7 @@
         </div>
 
         <div class="panel-title" style="padding: 15px 15px 0;">编排时间轴</div>
-        <div id="timeline-container">
-            </div>
+        <div id="timeline-container"></div>
     </div>
 
     <div id="popup-overlay"></div>
@@ -170,7 +183,7 @@
             <label>图案类型</label>
             <select id="cfg-type">
                 <option value="shape">预设几何体</option>
-                <option value="text">文字生成</option>
+                <option value="text">文字生成 (支持长句)</option>
             </select>
         </div>
         
@@ -187,12 +200,14 @@
         </div>
 
         <div class="popup-row" id="group-text" style="display:none">
-            <label>输入文字 (建议1-2字，支持中文)</label>
-            <input type="text" id="cfg-text-val" placeholder="Hi">
+            <label>输入文字</label>
+            <input type="text" id="cfg-text-val" placeholder="Hello World">
         </div>
 
+        <div id="est-hint">预估消耗: 0 / 400</div>
+
         <div class="popup-row">
-            <label>颜色配置 (点击 + 添加多色)</label>
+            <label>颜色配置</label>
             <div class="color-manager" id="color-list-container">
                 <div class="btn-add-color" onclick="addColorPicker()">+</div>
             </div>
@@ -222,12 +237,11 @@
 
 <script>
 (function() {
-    // ================= 1. 核心数据结构 =================
     const APP = {
-        drones: [],         // {mesh, currentPos, targetPos, baseColors:[], colorMode, colorOffset}
-        timeline: [],       // [{blocks: [...]}, ...]
-        currentStage: -1,   // -1: 地面, 0~N: 表演层级
-        state: 'LANDED',    // LANDED, TAKEOFF, HOVERING, TRANSITION, LANDING
+        drones: [],         
+        timeline: [],       
+        currentStage: -1,   
+        state: 'LANDED',   
         config: {
             count: 400,
             speed: 0.08,
@@ -236,20 +250,25 @@
         },
         autoTimer: null,
         gestureCooldown: 0,
-        tempColors: ['#ff0000'] // 弹窗临时的颜色存储
+        tempColors: ['#ff0000']
     };
 
-    // ================= 2. UI 逻辑与积木系统 =================
     const timelineContainer = document.getElementById('timeline-container');
     const popup = document.getElementById('config-popup');
     const overlay = document.getElementById('popup-overlay');
     const controlsPanel = document.getElementById('controls-panel');
+    const estHint = document.getElementById('est-hint');
+    const sysInfo = document.getElementById('sys-info');
     let currentEditingBlock = null; 
 
-    // 锁定/解锁 UI
     function setUILocked(locked) {
         if(locked) controlsPanel.classList.add('ui-locked');
         else controlsPanel.classList.remove('ui-locked');
+    }
+
+    // 实时更新顶部状态
+    function updateSysInfo() {
+        sysInfo.innerText = `🛸 ${APP.config.count} | ⚡ ${document.getElementById('inp-speed').value}`;
     }
 
     function initTimeline() { addLayer(); }
@@ -276,7 +295,6 @@
         block.dataset.configured = "false";
         
         block.onclick = () => {
-            // 只有在地面的状态下才允许编辑，防止逻辑冲突
             if(APP.state !== 'LANDED') {
                 alert("请先降落无人机再修改设置！");
                 return;
@@ -290,7 +308,6 @@
         }
     }
 
-    // --- 颜色管理逻辑 ---
     window.addColorPicker = function() {
         APP.tempColors.push('#00ffff');
         renderColorList();
@@ -308,7 +325,6 @@
     
     function renderColorList() {
         const container = document.getElementById('color-list-container');
-        // 保留最后一个 + 按钮
         const addBtn = container.lastElementChild;
         container.innerHTML = '';
         
@@ -317,7 +333,6 @@
             chip.className = 'color-chip';
             chip.style.backgroundColor = c;
             
-            // 隐藏的 input color
             const input = document.createElement('input');
             input.type = 'color';
             input.value = c;
@@ -329,9 +344,6 @@
                 APP.tempColors[i] = e.target.value;
             };
 
-            // 右键或点击特定区域删除? 这里简化为：hover 显示 x，点击 x 删除
-            // 为了简单，我们绑定点击事件：如果是 chip 本体打开颜色，如果是伪元素(通过坐标判断太麻烦)，加个独立删除钮
-            // 简化交互：双击删除，单击改色
             chip.title = "单击改色，双击删除";
             chip.ondblclick = () => removeColor(i);
 
@@ -341,13 +353,11 @@
         container.appendChild(addBtn);
     }
 
-    // --- 弹窗逻辑 ---
     function openConfig(blockDom, layerDom) {
         currentEditingBlock = { dom: blockDom, layerIndex: Array.from(timelineContainer.children).indexOf(layerDom) };
         overlay.style.display = 'block';
-        popup.style.display = 'block'; // 居中显示
+        popup.style.display = 'block'; 
 
-        // 恢复已有配置
         if (blockDom.dataset.config) {
             const cfg = JSON.parse(blockDom.dataset.config);
             document.getElementById('cfg-type').value = cfg.type;
@@ -359,25 +369,90 @@
             APP.tempColors = ['#00ffff'];
         }
         
-        // 触发一次显示切换
         document.getElementById('cfg-type').dispatchEvent(new Event('change'));
         renderColorList();
+        checkPointCount(); // 打开时检查一次
     }
+
+    // ★★★ 核心升级：实时计算点数消耗 ★★★
+    function checkPointCount() {
+        const type = document.getElementById('cfg-type').value;
+        const text = document.getElementById('cfg-text-val').value;
+        const currentTotal = APP.config.count;
+        let estimated = 0;
+
+        if (type === 'shape') {
+            estimated = Math.min(currentTotal, 200); // 形状通常不用太多
+            estHint.innerText = `预估消耗: ${estimated} / ${currentTotal} (自动适配)`;
+            estHint.style.color = '#666';
+        } else {
+            // 文字：简单的估算算法
+            // 假设每个汉字平均需要 50-80 个点才能看清
+            // 英文每个字母需要 20-30 个点
+            // 我们通过 Canvas 真实计算一下（采样率低一点以提高性能）
+            if(!text) {
+                estHint.innerText = `预估消耗: 0 / ${currentTotal}`;
+                return;
+            }
+            
+            // 快速模拟计算
+            const pts = getTextPoints(text, 1000, 5); // 5是step，粗略计算
+            estimated = pts.length;
+            
+            if (estimated > currentTotal) {
+                estHint.innerText = `⚠️ 警告: 文字太长 (需约 ${estimated} 架)，建议增加无人机数量`;
+                estHint.style.color = 'red';
+            } else {
+                estHint.innerText = `预估消耗: ${estimated} / ${currentTotal}`;
+                estHint.style.color = '#00ff00';
+            }
+        }
+    }
+
+    // 监听输入，实时计算提示
+    document.getElementById('cfg-text-val').addEventListener('input', checkPointCount);
 
     document.getElementById('btn-cancel').onclick = closePopup;
     document.getElementById('btn-ok').onclick = saveConfig;
     document.getElementById('cfg-type').onchange = (e) => {
         document.getElementById('group-shape').style.display = e.target.value === 'shape' ? 'block' : 'none';
         document.getElementById('group-text').style.display = e.target.value === 'text' ? 'block' : 'none';
+        checkPointCount();
     };
     
-    // 全局设置
-    document.getElementById('inp-count').onchange = e => APP.config.count = parseInt(e.target.value);
-    document.getElementById('inp-speed').onchange = e => APP.config.speed = parseInt(e.target.value) / 100;
+    // ★★★ 监听：无人机数量改变，实时重绘 ★★★
+    document.getElementById('inp-count').onchange = e => {
+        const val = parseInt(e.target.value);
+        if(APP.state !== 'LANDED') {
+            alert("请先降落再修改数量，这涉及到硬件重置！");
+            e.target.value = APP.config.count; // 恢复旧值
+            return;
+        }
+        APP.config.count = val;
+        updateSysInfo();
+        initDrones(); // 销毁并重建
+    };
+
+    // ★★★ 监听：速度改变，实时生效 ★★★
+    document.getElementById('inp-speed').onchange = e => {
+        const val = parseFloat(e.target.value);
+        APP.config.speed = val / 100;
+        updateSysInfo(); // 更新顶部显示
+    };
+    
     document.getElementById('inp-auto').onchange = e => {
         APP.config.auto = e.target.checked;
-        document.getElementById('row-interval').style.opacity = APP.config.auto ? 1 : 0.5;
-        document.getElementById('row-interval').style.pointerEvents = APP.config.auto ? 'auto' : 'none';
+        const rowInterval = document.getElementById('row-interval');
+        const btnStart = document.getElementById('btn-auto-start');
+        rowInterval.style.opacity = APP.config.auto ? 1 : 0.5;
+        rowInterval.style.pointerEvents = APP.config.auto ? 'auto' : 'none';
+        btnStart.style.display = APP.config.auto ? 'block' : 'none';
+    };
+
+    document.getElementById('btn-auto-start').onclick = () => {
+        if(APP.state === 'LANDED') {
+            switchState('TAKEOFF');
+        }
     };
 
     function closePopup() {
@@ -394,17 +469,16 @@
         const text = document.getElementById('cfg-text-val').value;
         const colorMode = document.getElementById('cfg-color-mode').value;
         
-        // 1. 构建配置对象
         const config = {
             type, shape, text, colorMode,
-            colors: [...APP.tempColors], // 复制副本
+            colors: [...APP.tempColors], 
             configured: true
         };
 
-        // 2. 更新 DOM 样式
-        const label = type === 'shape' ? shape : (text || 'Text');
+        let label = type === 'shape' ? shape : (text || 'Text');
+        if(label.length > 5) label = label.substring(0,4) + '..'; // UI上截断过长的文字
         currentEditingBlock.dom.querySelector('span').innerText = label;
-        // 预览色块：如果是多色，显示渐变
+        
         const preview = currentEditingBlock.dom.querySelector('.block-color-preview');
         if (config.colors.length > 1) {
             preview.style.background = `linear-gradient(45deg, ${config.colors.join(',')})`;
@@ -416,9 +490,7 @@
         currentEditingBlock.dom.dataset.configured = "true";
         currentEditingBlock.dom.dataset.config = JSON.stringify(config);
 
-        // 3. 重建数据层
         rebuildTimelineData();
-
         closePopup();
     }
 
@@ -438,7 +510,7 @@
 
     initTimeline();
 
-    // ================= 3. Three.js 场景构建 =================
+    // ================= 3. Three.js =================
     const container = document.getElementById('three-canvas-drone');
     const width = container.clientWidth;
     const height = container.clientHeight;
@@ -461,18 +533,30 @@
     const droneGeo = new THREE.SphereGeometry(1.5, 8, 8); 
 
     function initDrones() {
-        APP.drones.forEach(d => scene.remove(d.mesh));
+        // 1. 彻底清除旧 Mesh
+        APP.drones.forEach(d => {
+            if(d.mesh) {
+                scene.remove(d.mesh);
+                d.mesh.geometry.dispose();
+                d.mesh.material.dispose();
+            }
+        });
         APP.drones = [];
+
+        // 2. 重新生成
         const count = APP.config.count;
         const cols = Math.floor(Math.sqrt(count));
         
         for(let i=0; i<count; i++) {
             const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
             const mesh = new THREE.Mesh(droneGeo, material);
+            
+            // 排列逻辑：尽量排成正方形
             const row = Math.floor(i / cols);
             const col = i % cols;
-            const x = (col - cols/2) * 5;
-            const z = (row - cols/2) * 5;
+            // 间距稍微紧凑点：4
+            const x = (col - cols/2) * 4;
+            const z = (row - Math.floor(count/cols)/2) * 4;
             
             mesh.position.set(x, 0.5, z);
             scene.add(mesh);
@@ -481,32 +565,44 @@
                 mesh: mesh,
                 homePos: new THREE.Vector3(x, 0.5, z),
                 targetPos: new THREE.Vector3(x, 0.5, z),
-                baseColors: [new THREE.Color(1,1,1)], // 存储 THREE.Color 对象
+                baseColors: [new THREE.Color(1,1,1)], 
                 colorMode: 'solid',
                 delay: 0
             });
         }
+        console.log(`Initialized ${count} drones.`);
     }
+    // 初始运行一次
     initDrones();
+    updateSysInfo();
 
-    // ================= 4. 队形与颜色计算 =================
+    // ================= 4. Logic =================
     
-    function getTextPoints(text, count) {
+    // ★★★ 增强版文字生成：支持变长，自动布局 ★★★
+    function getTextPoints(text, maxCount, step=3) {
         const canvas = document.createElement('canvas');
-        canvas.width = 100; canvas.height = 100;
+        // 根据字数动态调整画布大小
+        const fontSize = 70;
+        const textLen = text.length;
+        canvas.width = Math.max(100, textLen * fontSize); // 宽度随字数变
+        canvas.height = 100;
+        
         const ctx = canvas.getContext('2d');
-        ctx.font = 'bold 70px "Microsoft YaHei"'; // 支持中文
+        ctx.font = `bold ${fontSize}px "Microsoft YaHei", sans-serif`; 
         ctx.fillStyle = 'white';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(text, 50, 50);
+        ctx.fillText(text, canvas.width / 2, 50);
         
-        const imageData = ctx.getImageData(0,0,100,100);
+        const imageData = ctx.getImageData(0,0, canvas.width, 100);
         const points = [];
-        for(let y=0; y<100; y+=3) { // 密度调整
-            for(let x=0; x<100; x+=3) {
-                if(imageData.data[(y*100+x)*4] > 128) {
-                    points.push(new THREE.Vector3((x-50)*3, (100-y)*2 + 20, 0));
+        
+        // 采样
+        for(let y=0; y<100; y+=step) { 
+            for(let x=0; x<canvas.width; x+=step) {
+                if(imageData.data[(y*canvas.width+x)*4] > 128) {
+                    // 映射回3D: 让文字居中
+                    points.push(new THREE.Vector3((x - canvas.width/2)*3, (100-y)*2 + 20, 0));
                 }
             }
         }
@@ -528,16 +624,15 @@
                 const angle = t * Math.PI * 2; 
                 x = 16 * Math.pow(Math.sin(angle), 3) * 4;
                 y = (13 * Math.cos(angle) - 5 * Math.cos(2*angle) - 2 * Math.cos(3*angle) - Math.cos(4*angle)) * 4 + 80;
-                z = (Math.random()-0.5) * 10; // 给一点厚度
+                z = (Math.random()-0.5) * 10; 
             } else if (shape === 'tree') {
-                // 简单的圆锥螺旋
-                const h = t * 100; // 高度 0-100
-                const r = (100 - h) * 0.4; // 半径随高度减小
+                const h = t * 100; 
+                const r = (100 - h) * 0.4; 
                 const angle = t * 30;
                 x = Math.cos(angle) * r;
                 y = h + 20;
                 z = Math.sin(angle) * r;
-            } else { // Cube/Star/Default
+            } else { 
                  const s = 80;
                  x = (Math.random() - 0.5) * s;
                  y = (Math.random() - 0.5) * s + 80;
@@ -552,54 +647,61 @@
         if (stageIndex >= APP.timeline.length) return false;
         
         const layerData = APP.timeline[stageIndex];
-        // 过滤掉未配置的积木 (Fix Bug #4)
         const validBlocks = layerData ? layerData.blocks.filter(b => b.configured) : [];
-        
-        if (validBlocks.length === 0) return false; // 这一轮是空的，不执行
+        if (validBlocks.length === 0) return false; 
 
+        // 简单均分无人机
         const dronesPerBlock = Math.floor(APP.drones.length / validBlocks.length);
         let droneIdx = 0;
         
         validBlocks.forEach((block, blockIdx) => {
-            let points = block.type === 'shape' ? 
-                         getShapePoints(block.shape, dronesPerBlock) : 
-                         getTextPoints(block.text || '?', dronesPerBlock);
+            let points = [];
             
-            // 点数补全或截断
+            if (block.type === 'shape') {
+                points = getShapePoints(block.shape, dronesPerBlock);
+            } else {
+                // ★ 文字生成：如果文字太长，这里会尝试生成所有点
+                // 但如果点数 > dronesPerBlock，需要采样截断，或者让多出来的点随机飞
+                const text = block.text || '?';
+                
+                // 动态步长：如果字多，点不够，就增加 step (稀疏化)
+                // 粗略估算：1个字 ~ 500点(step=1) -> 55点(step=3)
+                // 先尝试高精度
+                points = getTextPoints(text, dronesPerBlock, 3);
+                
+                // 如果点太多，超过了分配给这个积木的飞机数，就必须降采样(稀疏)
+                if (points.length > dronesPerBlock) {
+                    // 重新生成，加大步长 (简单粗暴的优化)
+                    points = getTextPoints(text, dronesPerBlock, 4); 
+                }
+            }
+            
+            // 如果点还是不够，补全
             if (points.length === 0) points.push(new THREE.Vector3(0,50,0));
             const targetCount = dronesPerBlock;
-            while(points.length < targetCount) {
-                 points.push(points[Math.floor(Math.random()*points.length)].clone());
-            }
-
-            // 分配
+            // 循环使用点，或者截断
+            
             for (let i = 0; i < targetCount; i++) {
                 if (droneIdx >= APP.drones.length) break;
                 
                 const d = APP.drones[droneIdx];
-                const p = points[i];
+                // 如果 points 不够，取模循环；如果 points 太多，只取前 N 个
+                const p = points[i % points.length];
                 
-                // 偏移 (如果多个积木)
                 const offsetX = (validBlocks.length > 1) ? (blockIdx - (validBlocks.length-1)/2) * 80 : 0;
                 d.targetPos.set(p.x + offsetX, p.y, p.z);
                 
-                // --- 颜色分配 (Fix Bug #3) ---
                 d.colorMode = block.colorMode;
                 d.baseColors = block.colors.map(c => new THREE.Color(c));
                 
                 if (block.colorMode === 'gradient') {
-                    // 渐变：根据 i/total 混合
                     const ratio = i / targetCount;
-                    // 简单线性插值 (只取头尾颜色，如果多个颜色需要分段，这里简化为在所有颜色间插值)
-                    // 简化实现：取两个颜色 lerp
                     const c1 = d.baseColors[0];
                     const c2 = d.baseColors[d.baseColors.length - 1];
                     d.mesh.material.color.copy(c1).lerp(c2, ratio);
                 } else if (block.colorMode === 'breathing') {
-                    // 呼吸模式：存下所有颜色，update 里算
-                    d.mesh.material.color.copy(d.baseColors[0]); // 初始颜色
+                    d.mesh.material.color.copy(d.baseColors[0]); 
                 } else {
-                    // Solid / Alternating
                     const c = d.baseColors[i % d.baseColors.length];
                     d.mesh.material.color.copy(c);
                 }
@@ -608,7 +710,6 @@
             }
         });
 
-        // 多余的飞机回家
         for (let j = droneIdx; j < APP.drones.length; j++) {
              APP.drones[j].targetPos.copy(APP.drones[j].homePos);
              APP.drones[j].mesh.material.color.setHex(0x222222);
@@ -617,7 +718,7 @@
         return true;
     }
 
-    // ================= 5. 动画与手势控制 =================
+    // ================= 5. Animation =================
 
     function updateStatus(msg, type='normal') {
         const el = document.getElementById('sys-status');
@@ -635,7 +736,7 @@
             APP.state = 'TAKEOFF';
             APP.currentStage = 0;
             updateStatus("🚀 起飞中...", 'cyan');
-            setUILocked(true); // 锁定 UI (Fix Bug #5)
+            setUILocked(true); 
             
             if(calculateStageTargets(0)) {
                 APP.drones.forEach((d, i) => d.delay = i * 0.005);
@@ -644,7 +745,6 @@
 
         } else if (action === 'NEXT') {
             let nextStage = APP.currentStage + 1;
-            // 找下一个有内容的层
             while(nextStage < APP.timeline.length && 
                   (!APP.timeline[nextStage].blocks || APP.timeline[nextStage].blocks.length === 0)) {
                 nextStage++;
@@ -655,7 +755,6 @@
                 APP.state = 'TRANSITION';
                 updateStatus(`变换: 第 ${APP.currentStage+1} 幕`);
                 
-                // 如果这一层是未设置的，calculateStageTargets 会返回 false，此时我们保持上一状态
                 if(calculateStageTargets(APP.currentStage)){
                     APP.drones.forEach(d => d.delay = 0);
                 } else {
@@ -690,8 +789,7 @@
         if(APP.autoTimer) clearInterval(APP.autoTimer);
         APP.autoTimer = setInterval(() => {
             if(APP.state === 'LANDED') return;
-            // 简单判断是否还有下一幕
-            if(APP.currentStage < APP.timeline.length - 2) { // -2 预留保险
+            if(APP.currentStage < APP.timeline.length - 2) { 
                 switchState('NEXT');
             } else {
                 switchState('LAND');
@@ -710,13 +808,12 @@
         let allArrived = true;
         
         APP.drones.forEach(d => {
-            // 1. 运动逻辑
             if (d.delay > 0) {
                 d.delay -= dt;
                 allArrived = false;
             } else {
                 const dist = d.mesh.position.distanceTo(d.targetPos);
-                if (dist > 0.5) { // 稍微放宽判定
+                if (dist > 0.5) { 
                     allArrived = false;
                     const speed = APP.config.speed * 60 * dt; 
                     d.mesh.position.lerp(d.targetPos, 0.08 * speed); 
@@ -725,10 +822,7 @@
                 }
             }
 
-            // 2. 颜色动态逻辑 (Breathing)
             if (d.colorMode === 'breathing' && d.baseColors.length > 0) {
-                // 根据时间循环切换颜色
-                // 周期 2秒
                 const t = (time * 2) % d.baseColors.length;
                 const idx1 = Math.floor(t);
                 const idx2 = (idx1 + 1) % d.baseColors.length;
@@ -737,20 +831,17 @@
             }
         });
 
-        // --- 状态流转核心 (Fix Bug #1) ---
-        // 只有当所有飞机到位，且处于过渡状态时，才切换到悬停
         if (allArrived) {
             if (APP.state === 'TAKEOFF' || APP.state === 'TRANSITION') {
                 APP.state = 'HOVERING';
-                updateStatus("✅ 悬停表演中 (请展示手势)", 'success');
+                updateStatus("✅ 悬停表演中", 'success');
             } else if (APP.state === 'LANDING') {
                 APP.state = 'LANDED';
                 updateStatus("System Ready");
-                setUILocked(false); // 解锁 UI
+                setUILocked(false); 
             }
         }
 
-        // 相机动效
         const r = 300;
         camera.position.x = r * Math.sin(time * 0.1);
         camera.position.z = r * Math.cos(time * 0.1);
@@ -760,7 +851,7 @@
     }
     animate();
 
-    // ================= 6. 手势识别 =================
+    // ================= 6. Gestures =================
     const videoElement = document.getElementById('drone-video');
     const canvasElement = document.getElementById('drone-mask-canvas');
     const canvasCtx = canvasElement.getContext('2d');
@@ -796,7 +887,7 @@
                              switchState('TAKEOFF');
                              triggerCooldown(60);
                         }
-                    } else if (APP.state === 'HOVERING') { // 只有悬停时才接受指令 (Fix Bug #1)
+                    } else if (APP.state === 'HOVERING') { 
                         if (dx > swipeThreshold) { 
                              switchState('NEXT');
                              triggerCooldown(40);
