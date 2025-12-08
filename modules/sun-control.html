@@ -1,5 +1,4 @@
 <style>
-    /* 容器样式 */
     #sun-interaction-container {
         position: relative;
         width: 100%;
@@ -9,43 +8,21 @@
         overflow: hidden;
         box-shadow: 0 10px 30px rgba(0,0,0,0.2);
     }
-
     #three-canvas { width: 100%; height: 100%; display: block; }
-
-    #input-video {
-        position: absolute; top: 0; left: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none;
-    }
-
+    
+    /* UI 样式 */
     .ui-overlay {
         position: absolute; top: 20px; left: 20px; z-index: 10;
         color: white; font-family: 'Segoe UI', sans-serif;
-        text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+        text-shadow: 0 1px 3px rgba(0,0,0,0.8);
         pointer-events: none;
     }
-
     .status-badge {
         display: inline-block; padding: 6px 12px;
-        background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.3);
+        background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.3);
         border-radius: 20px; backdrop-filter: blur(4px);
         font-size: 14px; margin-bottom: 10px;
-        transition: color 0.2s; /* 增加字体颜色过渡 */
-    }
-    
-    .status-badge.loading { color: #ffd700; }
-
-    .bg-controls {
-        position: absolute; bottom: 20px; left: 50%;
-        transform: translateX(-50%); display: flex; gap: 15px; z-index: 20;
-    }
-
-    .bg-btn {
-        background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.4);
-        color: white; padding: 8px 16px; border-radius: 6px; cursor: pointer;
-        transition: all 0.3s; backdrop-filter: blur(4px); font-size: 14px;
-    }
-    .bg-btn:hover, .bg-btn.active {
-        background: white; color: #333; transform: translateY(-3px);
-        box-shadow: 0 5px 15px rgba(255,255,255,0.3);
+        color: #ffd700; transition: all 0.3s;
     }
     
     .cam-preview {
@@ -53,20 +30,14 @@
         width: 120px; height: 90px; border-radius: 8px; overflow: hidden;
         border: 2px solid rgba(255,255,255,0.5); z-index: 10; background: #000;
     }
+    #input-video { position: absolute; opacity: 0; pointer-events: none; }
     #output-canvas { width: 100%; height: 100%; transform: scaleX(-1); }
 </style>
 
 <div id="sun-interaction-container">
     <div class="ui-overlay">
-        <div id="status-text" class="status-badge loading">正在启动 AI 视觉引擎...</div>
-        <div>✋ 张开：持续上升 | ✊ 握拳：持续下降 | ✋ 移开：悬停</div>
-    </div>
-
-    <div class="bg-controls">
-        <button class="bg-btn active" onclick="changeScene('ocean')">🌊 大海</button>
-        <button class="bg-btn" onclick="changeScene('city')">🏙️ 高楼</button>
-        <button class="bg-btn" onclick="changeScene('forest')">🌲 森林</button>
-        <button class="bg-btn" onclick="changeScene('roof')">🏠 屋顶</button>
+        <div id="status-text" class="status-badge">正在初始化真实海洋引擎...</div>
+        <div style="font-size:12px; opacity:0.9">✋ 张开：日出 (海面波光) | ✊ 握拳：日落 (晚霞)</div>
     </div>
 
     <div class="cam-preview"><canvas id="output-canvas"></canvas></div>
@@ -79,133 +50,121 @@
 <script src="js/control_utils.js"></script>
 <script src="js/drawing_utils.js"></script>
 <script src="js/hands.js"></script>
+<script src="js/objects/Water.js"></script>
+<script src="js/objects/Sky.js"></script>
 
 <script>
-    // ================= 1. Three.js 场景初始化 =================
+    // ================= 1. 3D 场景初始化 (真实海洋版) =================
     const container = document.getElementById('three-canvas');
     const width = container.clientWidth;
     const height = container.clientHeight;
 
     const scene = new THREE.Scene();
-    scene.fog = new THREE.FogExp2(0x11111f, 0.002);
 
-    const camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 1000);
-    camera.position.set(0, 5, 20);
+    // 相机位置：放低一点，营造“站在海边”的感觉
+    const camera = new THREE.PerspectiveCamera(55, width / height, 1, 20000);
+    camera.position.set(30, 30, 100);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(width, height);
     renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.toneMapping = THREE.ACESFilmicToneMapping; // 开启电影级色调映射
     container.appendChild(renderer.domElement);
 
-    // --- 太阳对象 ---
-    const sunGeometry = new THREE.SphereGeometry(4, 32, 32);
-    const sunMaterial = new THREE.MeshBasicMaterial({ color: 0xffaa00 });
-    const sunMesh = new THREE.Mesh(sunGeometry, sunMaterial);
-    scene.add(sunMesh);
+    // --- A. 太阳 (看不见的数学太阳) ---
+    // 我们需要一个向量来代表太阳的位置，传给 Sky 和 Water shader
+    const sun = new THREE.Vector3();
 
-    // --- 太阳光晕 ---
-    const textureLoader = new THREE.TextureLoader();
-    function createGlowTexture() {
-        const canvas = document.createElement('canvas');
-        canvas.width = 128; canvas.height = 128;
-        const ctx = canvas.getContext('2d');
-        const gradient = ctx.createRadialGradient(64,64,0, 64,64,64);
-        gradient.addColorStop(0, 'rgba(255, 200, 100, 1)');
-        gradient.addColorStop(0.4, 'rgba(255, 100, 0, 0.5)');
-        gradient.addColorStop(1, 'rgba(255, 100, 0, 0)');
-        ctx.fillStyle = gradient;
-        ctx.fillRect(0,0,128,128);
-        return new THREE.CanvasTexture(canvas);
-    }
-    const sunGlow = new THREE.Sprite(new THREE.SpriteMaterial({ 
-        map: createGlowTexture(), 
-        color: 0xffaa00, 
-        transparent: true, 
-        opacity: 0.8,
-        blending: THREE.AdditiveBlending
-    }));
-    sunGlow.scale.set(15, 15, 1);
-    sunMesh.add(sunGlow);
+    // --- B. 创建海洋 (Water) ---
+    const waterGeometry = new THREE.PlaneGeometry(10000, 10000);
 
-    // --- 光照系统 ---
-    const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
-    scene.add(ambientLight);
-    const sunLight = new THREE.DirectionalLight(0xffaa33, 1);
-    sunLight.castShadow = true;
-    scene.add(sunLight);
+    const water = new THREE.Water(
+        waterGeometry,
+        {
+            textureWidth: 512,
+            textureHeight: 512,
+            waterNormals: new THREE.TextureLoader().load('https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/water/waternormals.jpg', function ( texture ) {
+                texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+            }),
+            sunDirection: new THREE.Vector3(),
+            sunColor: 0xffffff,
+            waterColor: 0x001e0f, // 深海蓝绿色
+            distortionScale: 3.7, // 波浪大小
+            fog: scene.fog !== undefined
+        }
+    );
+    water.rotation.x = - Math.PI / 2;
+    scene.add(water);
 
-    // 【修改点1】：这里删除了所有粒子系统 (Particle System) 的代码
+    // --- C. 创建天空 (Sky) ---
+    const sky = new THREE.Sky();
+    sky.scale.setScalar(10000);
+    scene.add(sky);
 
-    // --- 地面/背景 ---
-    const groundGeo = new THREE.PlaneGeometry(200, 200);
-    const groundMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.8, metalness: 0.2 });
-    const ground = new THREE.Mesh(groundGeo, groundMat);
-    ground.rotation.x = -Math.PI / 2;
-    ground.position.y = -5;
-    scene.add(ground);
+    const skyUniforms = sky.material.uniforms;
+    skyUniforms['turbidity'].value = 10;   // 浑浊度
+    skyUniforms['rayleigh'].value = 2;     // 瑞利散射 (控制天空颜色)
+    skyUniforms['mieCoefficient'].value = 0.005; 
+    skyUniforms['mieDirectionalG'].value = 0.8;
 
-    // ================= 2. 逻辑控制 (核心修改) =================
+    // --- D. 可视化的太阳球体 (为了让你肉眼看到那个球) ---
+    // 虽然 Sky Shader 会自带一个发光的太阳盘，但为了配合你的手势操作感，
+    // 我们加一个发光的球体叠在那个位置
+    const sunSphereGeo = new THREE.SphereGeometry(200, 32, 32); // 很大很远
+    const sunSphereMat = new THREE.MeshBasicMaterial({ color: 0xffffaa });
+    const sunSphere = new THREE.Mesh(sunSphereGeo, sunSphereMat);
+    scene.add(sunSphere);
 
-    // 【修改点2】：控制逻辑变量
-    let currentSunY = -10;  // 当前高度
-    let moveState = 0;      // 0=静止, 1=上升, -1=下降
-    const SPEED = 0.08;     // ★ 速度控制：数字越小越慢，越大越快 (建议 0.05 - 0.15)
-    const MAX_H = 10;       // 最高点
-    const MIN_H = -10;      // 最低点
+    // ================= 2. 逻辑控制 =================
 
-    const scenes = {
-        ocean:  { skyTop: 0x0077ff, skyBot: 0x001133, ground: 0x004488 },
-        city:   { skyTop: 0x555577, skyBot: 0x111122, ground: 0x111111 },
-        forest: { skyTop: 0x88ccff, skyBot: 0x004400, ground: 0x003300 },
-        roof:   { skyTop: 0xffaa88, skyBot: 0x442244, ground: 0x332222 }
-    };
-    let currentScene = 'ocean';
+    // 太阳高度控制变量
+    // 0 = 地平线, 0.5 = 正午(90度), -0.05 = 刚落下
+    let elevation = 0; // 初始在地平线
+    let moveState = 0; // 0=停, 1=升, -1=降
+    const SPEED = 0.003; // 太阳角度变化速度 (弧度)
 
-    window.changeScene = function(name) {
-        currentScene = name;
-        document.querySelectorAll('.bg-btn').forEach(btn => btn.classList.remove('active'));
-        event.target.classList.add('active');
-    }
-
-    function updateEnvironment() {
-        // 【修改点3】：改为增量运动
+    function updateSunPosition() {
+        // 增量控制
         if (moveState !== 0) {
-            currentSunY += moveState * SPEED;
-            
-            // 限制范围 (Clamp)
-            if (currentSunY > MAX_H) currentSunY = MAX_H;
-            if (currentSunY < MIN_H) currentSunY = MIN_H;
+            elevation += moveState * SPEED;
+            // 限制范围：-2度到 45度
+            if (elevation > 0.4) elevation = 0.4; // 最高升到约45度角
+            if (elevation < -0.05) elevation = -0.05; // 最低落到海平面下一点点
         }
 
-        // 应用位置
-        sunMesh.position.set(0, currentSunY, -20);
-        sunLight.position.set(0, currentSunY, -20);
+        // --- 核心数学计算：把角度变成 XYZ 坐标 ---
+        const phi = THREE.MathUtils.degToRad(90 - (elevation * 180)); // 仰角
+        const theta = THREE.MathUtils.degToRad(180); // 方位角 (正南方)
 
-        // 计算 "白天程度" (0 = 黑夜, 1 = 白天)
-        const dayProgress = Math.min(Math.max((currentSunY + 5) / 15, 0), 1);
+        // 1. 更新数学太阳坐标
+        sun.setFromSphericalCoords(1, phi, theta);
 
-        // 颜色变化逻辑 (保持不变)
-        const sceneConfig = scenes[currentScene];
-        const skyColor = new THREE.Color(sceneConfig.skyBot).lerp(new THREE.Color(sceneConfig.skyTop), dayProgress);
-        scene.fog.color.copy(skyColor);
-        renderer.setClearColor(skyColor);
+        // 2. 传给 Sky Shader (天空变色)
+        sky.material.uniforms['sunPosition'].value.copy(sun);
 
-        const sunColor = new THREE.Color(0xff0000).lerp(new THREE.Color(0xffffaa), dayProgress);
-        sunMaterial.color.copy(sunColor);
-        sunGlow.material.color.copy(sunColor);
+        // 3. 传给 Water Shader (海面反光)
+        water.material.uniforms['sunDirection'].value.copy(sun).normalize();
 
-        sunLight.intensity = dayProgress * 1.5;
-        ambientLight.intensity = 0.2 + (dayProgress * 0.5);
+        // 4. 更新可视化的太阳球体位置 (它在很远的地方)
+        sunSphere.position.copy(sun).multiplyScalar(4000); // 放在4000米外
+        
+        // 5. 根据高度改变太阳球的颜色 (红 -> 黄)
+        const sunColor = new THREE.Color(0xff0000).lerp(new THREE.Color(0xffffeb), (elevation + 0.05) * 2.5);
+        sunSphere.material.color.copy(sunColor);
     }
 
     function animate() {
         requestAnimationFrame(animate);
-        updateEnvironment();
+
+        // 让海水流动
+        water.material.uniforms[ 'time' ].value += 1.0 / 60.0;
+
+        updateSunPosition();
         renderer.render(scene, camera);
     }
     animate();
 
-    // ================= 3. MediaPipe Hands =================
+    // ================= 3. AI 手势识别 (带实景预览) =================
     
     const videoElement = document.getElementById('input-video');
     const canvasElement = document.getElementById('output-canvas');
@@ -214,46 +173,37 @@
 
     function onResults(results) {
         statusText.classList.remove('loading');
-        // statusText.classList.add('active'); // 暂时去掉，根据手势变色
-
+        
         canvasCtx.save();
         canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-        // canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height); // 不画原图，只画骨架
+        // 绘制实景
+        canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
 
         if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
             const landmarks = results.multiHandLandmarks[0];
             
-            // 画骨架
             drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: '#00FF00', lineWidth: 2});
             drawLandmarks(canvasCtx, landmarks, {color: '#FF0000', lineWidth: 1, radius: 2});
 
-            // 计算张开程度
+            // 简单的张合计算
             const wrist = landmarks[0];
             const middleTip = landmarks[12];
             const dist = Math.sqrt(Math.pow(middleTip.x - wrist.x, 2) + Math.pow(middleTip.y - wrist.y, 2));
 
-            // 【修改点4】：阈值判定与状态控制
-            // 0.35 以上算张开，0.25 以下算握拳，中间算“保持”
-            
             if (dist > 0.32) {
-                // 手张开 -> 持续上升
-                moveState = 1;
-                statusText.innerText = "状态：🖐️ 张开 (正在上升)";
-                statusText.style.color = "#00ff00"; // 绿色
+                moveState = 1; // 升
+                statusText.innerText = "状态：🖐️ 日出 (海面波光浮现)";
+                statusText.style.color = "#00ff00";
             } else if (dist < 0.22) {
-                // 手握拳 -> 持续下降
-                moveState = -1;
-                statusText.innerText = "状态：✊ 握拳 (正在下降)";
-                statusText.style.color = "#ff4400"; // 橙红色
+                moveState = -1; // 降
+                statusText.innerText = "状态：✊ 日落 (正在进入黄昏)";
+                statusText.style.color = "#ff4400";
             } else {
-                // 中间状态 -> 悬停
-                moveState = 0;
-                statusText.innerText = "状态：✋ 悬停 (请张开或握拳)";
+                moveState = 0; // 停
+                statusText.innerText = "状态：✋ 悬停 (欣赏当前美景)";
                 statusText.style.color = "yellow";
             }
-
         } else {
-            // 没检测到手 -> 停止
             moveState = 0;
             statusText.innerText = "未检测到手势，请伸手";
             statusText.style.color = "white";
@@ -281,5 +231,14 @@
     });
     
     cameraUtils.start();
+
+    // 窗口大小改变时自适应
+    window.addEventListener('resize', onWindowResize, false);
+    function onWindowResize() {
+        if(!container) return;
+        camera.aspect = container.clientWidth / container.clientHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize( container.clientWidth, container.clientHeight );
+    }
 
 </script>
