@@ -1,5 +1,4 @@
 <style>
-    /* 容器样式 */
     #sun-interaction-container {
         position: relative; width: 100%; height: 600px;
         background: #000; border-radius: 12px; overflow: hidden;
@@ -29,10 +28,9 @@
 
 <div id="sun-interaction-container">
     <div class="ui-overlay">
-        <div id="status-text" class="status-badge">正在初始化引擎...</div>
-        <div style="font-size:12px; opacity:0.9">✋ 张开：缓缓升起 | ✊ 握拳：缓缓落下</div>
+        <div id="status-text" class="status-badge">正在初始化高保真引擎...</div>
+        <div style="font-size:12px; opacity:0.9">✋ 张开：旭日东升 (金光) | ✊ 握拳：夕阳西下 (橘红)</div>
     </div>
-
     <div class="cam-preview"><canvas id="output-canvas"></canvas></div>
     <video id="input-video" playsinline></video>
     <div id="three-canvas"></div>
@@ -43,38 +41,61 @@
 <script src="js/control_utils.js"></script>
 <script src="js/drawing_utils.js"></script>
 <script src="js/hands.js"></script>
-
 <script src="js/Water.js"></script>
 <script src="js/Sky.js"></script>
 
 <script>
     const statusText = document.getElementById('status-text');
 
-    // 生成海面纹理 (无需改动)
-    function createWaterNormalTexture() {
+    // ★★★ 核心升级1：生成更“硬”、更细碎的法线贴图 ★★★
+    // 之前的太软了，导致像湖面。这个版本噪点更密集，模拟海浪的破碎感。
+    function createRoughWaterTexture() {
         const size = 512;
         const canvas = document.createElement('canvas');
         canvas.width = size; canvas.height = size;
         const ctx = canvas.getContext('2d');
+        
         ctx.fillStyle = '#8080ff'; 
         ctx.fillRect(0, 0, size, size);
-        for (let i = 0; i < 20000; i++) {
+
+        // 使用更小的半径、更高的数量，制造细碎波光
+        for (let i = 0; i < 40000; i++) { // 数量翻倍
             const x = Math.random() * size;
             const y = Math.random() * size;
-            const r = Math.random() * 2 + 1;
+            const r = Math.random() * 1.5 + 0.5; // 半径变小
             ctx.beginPath();
             ctx.arc(x, y, r, 0, Math.PI * 2);
-            ctx.fillStyle = `rgba(${128 + Math.random()*127}, ${128 + Math.random()*127}, 255, 0.5)`;
+            // 颜色差异加大，增强法线凹凸感
+            ctx.fillStyle = `rgba(${100 + Math.random()*155}, ${100 + Math.random()*155}, 255, ${0.3 + Math.random()*0.4})`;
             ctx.fill();
         }
+        
         const texture = new THREE.CanvasTexture(canvas);
         texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+        // 增加重复率，让波纹更密
+        texture.repeat.set(4, 4); 
         return texture;
+    }
+
+    // ★★★ 核心升级2：创建光晕纹理 (Sprite) ★★★
+    function createGlowTexture() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 128; canvas.height = 128;
+        const ctx = canvas.getContext('2d');
+        // 径向渐变：中心亮 -> 边缘透明
+        const gradient = ctx.createRadialGradient(64,64,0, 64,64,64);
+        gradient.addColorStop(0, 'rgba(255, 255, 255, 1)'); // 中心白亮
+        gradient.addColorStop(0.2, 'rgba(255, 200, 100, 0.8)'); // 中间橙
+        gradient.addColorStop(0.5, 'rgba(255, 100, 50, 0.3)'); // 外圈红
+        gradient.addColorStop(1, 'rgba(0, 0, 0, 0)'); // 边缘透明
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0,0,128,128);
+        return new THREE.CanvasTexture(canvas);
     }
 
     try {
         if (!THREE.Water || !THREE.Sky) {
-            throw new Error("请确保 js 文件夹内包含 Water.js 和 Sky.js");
+            throw new Error("请检查 js 文件夹是否包含 Water.js 和 Sky.js");
         }
 
         const container = document.getElementById('three-canvas');
@@ -82,10 +103,10 @@
         const height = container.clientHeight;
 
         const scene = new THREE.Scene();
-
-        // 调整相机位置，更贴近海面，增强沉浸感
+        
+        // 相机位置：放得更低（30 -> 15），视角更平视，这样“波光长条”会拉得更长
         const camera = new THREE.PerspectiveCamera(55, width / height, 1, 20000);
-        camera.position.set(30, 30, 100);
+        camera.position.set(30, 15, 100); 
 
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(width, height);
@@ -94,63 +115,70 @@
         renderer.outputEncoding = THREE.sRGBEncoding;
         container.appendChild(renderer.domElement);
 
-        // ★ PMREM Generator (直接从 THREE 核心库调用，无需单独文件)
         const pmremGenerator = new THREE.PMREMGenerator(renderer);
         pmremGenerator.compileEquirectangularShader();
 
-        // --- 创建海洋 ---
+        // --- 1. 海洋 ---
         const waterGeometry = new THREE.PlaneGeometry(10000, 10000);
         const water = new THREE.Water(
             waterGeometry,
             {
                 textureWidth: 512,
                 textureHeight: 512,
-                waterNormals: createWaterNormalTexture(),
+                waterNormals: createRoughWaterTexture(), // 使用新的“硬”纹理
                 sunDirection: new THREE.Vector3(),
-                sunColor: 0xffffff,
+                sunColor: 0xffffff, // 太阳光设为纯白，以获得最强反射
                 waterColor: 0x001e0f,
-                distortionScale: 3.7,
+                distortionScale: 6.0, // ★ 关键：调大这个值（之前是3.7），让水面扭曲更剧烈
                 fog: scene.fog !== undefined
             }
         );
         water.rotation.x = - Math.PI / 2;
         scene.add(water);
 
-        // --- 创建天空 ---
+        // --- 2. 天空 ---
         const sky = new THREE.Sky();
         sky.scale.setScalar(10000);
         scene.add(sky);
-
         const skyUniforms = sky.material.uniforms;
         skyUniforms['turbidity'].value = 10;
-        skyUniforms['rayleigh'].value = 2;
+        skyUniforms['rayleigh'].value = 3; // 稍微调高散射，让红光更浓
         skyUniforms['mieCoefficient'].value = 0.005; 
         skyUniforms['mieDirectionalG'].value = 0.8;
 
         const sun = new THREE.Vector3();
 
-        // 太阳球体
-        const sunSphere = new THREE.Mesh(
-            new THREE.SphereGeometry(200, 32, 32),
-            new THREE.MeshBasicMaterial({ color: 0xffffaa })
-        );
+        // --- 3. 太阳本体 (Disk) ---
+        // 这是一个清晰的圆盘，模拟第一张图中那个“圆圆的太阳”
+        const sunGeometry = new THREE.SphereGeometry(60, 32, 32); 
+        const sunMaterial = new THREE.MeshBasicMaterial({ color: 0xffaa00 });
+        const sunSphere = new THREE.Mesh(sunGeometry, sunMaterial);
         scene.add(sunSphere);
 
-        // ================= 2. 逻辑控制 =================
+        // --- 4. 太阳光晕 (Glow) ---
+        // 这是一个永远面向相机的 Sprite，模拟周围那一圈光雾
+        const glowMaterial = new THREE.SpriteMaterial({ 
+            map: createGlowTexture(), 
+            color: 0xff4400, 
+            transparent: true, 
+            blending: THREE.AdditiveBlending,
+            opacity: 0.8
+        });
+        const sunGlow = new THREE.Sprite(glowMaterial);
+        sunGlow.scale.set(800, 800, 1); // 光晕要比太阳大很多
+        scene.add(sunGlow);
 
-        let elevation = 0; 
+        // ================= 逻辑控制 =================
+
+        let elevation = 0.02; // 初始略高于海平面
         let moveState = 0; 
-        
-        // ★★★ 速度控制区域 ★★★
-        // 0.003 -> 0.0005 (变慢了6倍，非常丝滑)
         const SPEED = 0.0005; 
 
         function updateSunPosition() {
             if (moveState !== 0) {
                 elevation += moveState * SPEED;
-                // 限制最高和最低点
                 if (elevation > 0.4) elevation = 0.4; 
-                if (elevation < -0.05) elevation = -0.05; 
+                if (elevation < -0.02) elevation = -0.02; // 允许稍微落下一点点
             }
 
             const phi = THREE.MathUtils.degToRad(90 - (elevation * 180)); 
@@ -158,33 +186,57 @@
 
             sun.setFromSphericalCoords(1, phi, theta);
 
+            // 1. 更新天空和海洋的物理参数
             sky.material.uniforms['sunPosition'].value.copy(sun);
             water.material.uniforms['sunDirection'].value.copy(sun).normalize();
-            sunSphere.position.copy(sun).multiplyScalar(4000); 
             
-            const sunColor = new THREE.Color(0xff0000).lerp(new THREE.Color(0xffffeb), (elevation + 0.05) * 2.5);
-            sunSphere.material.color.copy(sunColor);
-
-            // 实时计算环境光反射（这一步最耗性能，但效果最真）
+            // 2. 更新环境光 (让海面反射天空颜色)
             scene.environment = pmremGenerator.fromScene(sky).texture;
+
+            // 3. 计算太阳位置 (很远的地方)
+            const sunPos = sun.clone().multiplyScalar(4000);
+            sunSphere.position.copy(sunPos);
+            sunGlow.position.copy(sunPos);
+
+            // 4. ★ 核心：颜色与形态随高度变化 ★
+            // elevation 越小(越低)，颜色越红，光晕越强
+            // elevation 越大(越高)，颜色越黄白，光晕越弱
+
+            // 计算进度 0(落) -> 1(高)
+            const progress = (elevation + 0.02) / 0.42; 
+
+            // -- 太阳本体颜色 (深橘红 -> 亮金黄) --
+            const colorRed = new THREE.Color(0xff2200); // 极红
+            const colorGold = new THREE.Color(0xffddaa); // 金白
+            sunSphere.material.color.copy(colorRed).lerp(colorGold, progress);
+
+            // -- 光晕颜色 (深红 -> 橙黄) --
+            const glowRed = new THREE.Color(0xff1100);
+            const glowOrange = new THREE.Color(0xff8800);
+            sunGlow.material.color.copy(glowRed).lerp(glowOrange, progress);
+
+            // -- 光晕大小与透明度 (低处光晕大且浓，高处光晕小且淡) --
+            const scale = 1000 - (progress * 400); // 1000 -> 600
+            sunGlow.scale.set(scale, scale, 1);
+            sunGlow.material.opacity = 1.0 - (progress * 0.3); // 低处不透明度高
         }
 
         function animate() {
             requestAnimationFrame(animate);
+            // 让波纹流动更快一点
             water.material.uniforms[ 'time' ].value += 1.0 / 60.0;
             updateSunPosition();
             renderer.render(scene, camera);
         }
         animate();
 
-        // ================= 3. AI 手势识别 =================
-        
+        // ================= 手势识别 =================
         const videoElement = document.getElementById('input-video');
         const canvasElement = document.getElementById('output-canvas');
         const canvasCtx = canvasElement.getContext('2d');
 
         function onResults(results) {
-            statusText.innerText = "系统运行中，请展示手势";
+            statusText.innerText = "系统就绪：请展示手势";
             statusText.style.color = "yellow";
             
             canvasCtx.save();
@@ -202,15 +254,15 @@
 
                 if (dist > 0.32) {
                     moveState = 1; 
-                    statusText.innerText = "状态：🖐️ 日出 (缓缓升起)";
+                    statusText.innerText = "状态：🖐️ 旭日东升 (波光粼粼)";
                     statusText.style.color = "#00ff00";
                 } else if (dist < 0.22) {
                     moveState = -1; 
-                    statusText.innerText = "状态：✊ 日落 (缓缓落下)";
+                    statusText.innerText = "状态：✊ 夕阳西下 (血色残阳)";
                     statusText.style.color = "#ff4400";
                 } else {
                     moveState = 0; 
-                    statusText.innerText = "状态：✋ 悬停 (保持当前高度)";
+                    statusText.innerText = "状态：✋ 悬停 (欣赏美景)";
                     statusText.style.color = "white";
                 }
             } else {
@@ -222,23 +274,13 @@
         const hands = new Hands({locateFile: (file) => {
             return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
         }});
-
-        hands.setOptions({
-            maxNumHands: 1,
-            modelComplexity: 1,
-            minDetectionConfidence: 0.5,
-            minTrackingConfidence: 0.5
-        });
-
+        hands.setOptions({maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5});
         hands.onResults(onResults);
-
-        statusText.innerText = "正在启动摄像头...";
+        
         const cameraUtils = new Camera(videoElement, {
             onFrame: async () => { await hands.send({image: videoElement}); },
-            width: 320,
-            height: 240
+            width: 320, height: 240
         });
-        
         cameraUtils.start();
 
         window.addEventListener('resize', () => {
