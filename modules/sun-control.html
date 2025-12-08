@@ -3,111 +3,63 @@
     #sun-interaction-container {
         position: relative;
         width: 100%;
-        height: 600px; /* 高度固定，保证视野 */
+        height: 600px;
         background: #000;
         border-radius: 12px;
         overflow: hidden;
         box-shadow: 0 10px 30px rgba(0,0,0,0.2);
     }
 
-    /* 3D 画布 */
-    #three-canvas {
-        width: 100%;
-        height: 100%;
-        display: block;
+    #three-canvas { width: 100%; height: 100%; display: block; }
+
+    #input-video {
+        position: absolute; top: 0; left: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none;
     }
 
-    /* 隐藏的摄像头视频元素（用于AI识别） */
-    #input-video {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 1px; 
-        height: 1px;
-        opacity: 0;
+    .ui-overlay {
+        position: absolute; top: 20px; left: 20px; z-index: 10;
+        color: white; font-family: 'Segoe UI', sans-serif;
+        text-shadow: 0 2px 4px rgba(0,0,0,0.8);
         pointer-events: none;
     }
 
-    /* UI 层：状态与控制 */
-    .ui-overlay {
-        position: absolute;
-        top: 20px;
-        left: 20px;
-        z-index: 10;
-        color: white;
-        font-family: 'Segoe UI', sans-serif;
-        text-shadow: 0 2px 4px rgba(0,0,0,0.8);
-        pointer-events: none; /* 让鼠标能穿透去点击背景按钮 */
-    }
-
     .status-badge {
-        display: inline-block;
-        padding: 6px 12px;
-        background: rgba(0,0,0,0.6);
-        border: 1px solid rgba(255,255,255,0.3);
-        border-radius: 20px;
-        backdrop-filter: blur(4px);
-        font-size: 14px;
-        margin-bottom: 10px;
+        display: inline-block; padding: 6px 12px;
+        background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.3);
+        border-radius: 20px; backdrop-filter: blur(4px);
+        font-size: 14px; margin-bottom: 10px;
+        transition: color 0.2s; /* 增加字体颜色过渡 */
     }
     
     .status-badge.loading { color: #ffd700; }
-    .status-badge.active { color: #00ff00; border-color: #00ff00; }
 
-    /* 背景切换按钮组 */
     .bg-controls {
-        position: absolute;
-        bottom: 20px;
-        left: 50%;
-        transform: translateX(-50%);
-        display: flex;
-        gap: 15px;
-        z-index: 20;
+        position: absolute; bottom: 20px; left: 50%;
+        transform: translateX(-50%); display: flex; gap: 15px; z-index: 20;
     }
 
     .bg-btn {
-        background: rgba(255,255,255,0.2);
-        border: 1px solid rgba(255,255,255,0.4);
-        color: white;
-        padding: 8px 16px;
-        border-radius: 6px;
-        cursor: pointer;
-        transition: all 0.3s;
-        backdrop-filter: blur(4px);
-        font-size: 14px;
+        background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.4);
+        color: white; padding: 8px 16px; border-radius: 6px; cursor: pointer;
+        transition: all 0.3s; backdrop-filter: blur(4px); font-size: 14px;
     }
     .bg-btn:hover, .bg-btn.active {
-        background: white;
-        color: #333;
-        transform: translateY(-3px);
+        background: white; color: #333; transform: translateY(-3px);
         box-shadow: 0 5px 15px rgba(255,255,255,0.3);
     }
     
-    /* 摄像头预览窗（可选，方便用户看手势） */
     .cam-preview {
-        position: absolute;
-        bottom: 20px;
-        right: 20px;
-        width: 120px;
-        height: 90px;
-        border-radius: 8px;
-        overflow: hidden;
-        border: 2px solid rgba(255,255,255,0.5);
-        z-index: 10;
-        background: #000;
+        position: absolute; bottom: 20px; right: 20px;
+        width: 120px; height: 90px; border-radius: 8px; overflow: hidden;
+        border: 2px solid rgba(255,255,255,0.5); z-index: 10; background: #000;
     }
-    /* 这里的 canvas 是 MediaPipe 画出来的骨架图 */
-    #output-canvas {
-        width: 100%;
-        height: 100%;
-        transform: scaleX(-1); /* 镜像翻转，符合直觉 */
-    }
+    #output-canvas { width: 100%; height: 100%; transform: scaleX(-1); }
 </style>
 
 <div id="sun-interaction-container">
     <div class="ui-overlay">
         <div id="status-text" class="status-badge loading">正在启动 AI 视觉引擎...</div>
-        <div>✋ 张开手掌：升起太阳 | ✊ 握紧拳头：落下太阳</div>
+        <div>✋ 张开：持续上升 | ✊ 握拳：持续下降 | ✋ 移开：悬停</div>
     </div>
 
     <div class="bg-controls">
@@ -117,10 +69,7 @@
         <button class="bg-btn" onclick="changeScene('roof')">🏠 屋顶</button>
     </div>
 
-    <div class="cam-preview">
-        <canvas id="output-canvas"></canvas>
-    </div>
-
+    <div class="cam-preview"><canvas id="output-canvas"></canvas></div>
     <video id="input-video" playsinline></video>
     <div id="three-canvas"></div>
 </div>
@@ -132,17 +81,16 @@
 <script src="js/hands.js"></script>
 
 <script>
-    // ================= 1. Three.js 场景初始化 (视觉部分) =================
+    // ================= 1. Three.js 场景初始化 =================
     const container = document.getElementById('three-canvas');
     const width = container.clientWidth;
     const height = container.clientHeight;
 
     const scene = new THREE.Scene();
-    // 增加一点雾气，让远处有朦胧感
     scene.fog = new THREE.FogExp2(0x11111f, 0.002);
 
     const camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 1000);
-    camera.position.set(0, 5, 20); // 相机位置
+    camera.position.set(0, 5, 20);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(width, height);
@@ -155,9 +103,8 @@
     const sunMesh = new THREE.Mesh(sunGeometry, sunMaterial);
     scene.add(sunMesh);
 
-    // 太阳光晕 (Sprite)
+    // --- 太阳光晕 ---
     const textureLoader = new THREE.TextureLoader();
-    // 这是一个简单的光晕贴图生成逻辑，为了不依赖外部图片，我们用 Canvas 生成一个
     function createGlowTexture() {
         const canvas = document.createElement('canvas');
         canvas.width = 128; canvas.height = 128;
@@ -170,62 +117,42 @@
         ctx.fillRect(0,0,128,128);
         return new THREE.CanvasTexture(canvas);
     }
-    const glowMaterial = new THREE.SpriteMaterial({ 
+    const sunGlow = new THREE.Sprite(new THREE.SpriteMaterial({ 
         map: createGlowTexture(), 
         color: 0xffaa00, 
         transparent: true, 
         opacity: 0.8,
         blending: THREE.AdditiveBlending
-    });
-    const sunGlow = new THREE.Sprite(glowMaterial);
+    }));
     sunGlow.scale.set(15, 15, 1);
-    sunMesh.add(sunGlow); // 光晕跟随太阳
+    sunMesh.add(sunGlow);
 
     // --- 光照系统 ---
-    const ambientLight = new THREE.AmbientLight(0x404040, 0.5); // 环境光
+    const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
     scene.add(ambientLight);
-
     const sunLight = new THREE.DirectionalLight(0xffaa33, 1);
     sunLight.castShadow = true;
     scene.add(sunLight);
 
-    // --- 粒子系统 (光影尘埃) ---
-    const particleCount = 1000;
-    const particlesGeom = new THREE.BufferGeometry();
-    const particlePositions = [];
-    for(let i=0; i<particleCount; i++) {
-        particlePositions.push((Math.random() - 0.5) * 50); // x
-        particlePositions.push((Math.random() - 0.5) * 30); // y
-        particlePositions.push((Math.random() - 0.5) * 50); // z
-    }
-    particlesGeom.setAttribute('position', new THREE.Float32BufferAttribute(particlePositions, 3));
-    const particleMat = new THREE.PointsMaterial({
-        color: 0xffffff,
-        size: 0.2,
-        transparent: true,
-        opacity: 0.6
-    });
-    const particleSystem = new THREE.Points(particlesGeom, particleMat);
-    scene.add(particleSystem);
+    // 【修改点1】：这里删除了所有粒子系统 (Particle System) 的代码
 
-    // --- 地面/背景 (占位，可替换为模型) ---
+    // --- 地面/背景 ---
     const groundGeo = new THREE.PlaneGeometry(200, 200);
-    const groundMat = new THREE.MeshStandardMaterial({ 
-        color: 0x222222, 
-        roughness: 0.8,
-        metalness: 0.2 
-    });
+    const groundMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.8, metalness: 0.2 });
     const ground = new THREE.Mesh(groundGeo, groundMat);
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = -5;
     scene.add(ground);
 
-    // ================= 2. 逻辑控制 (动画与交互) =================
+    // ================= 2. 逻辑控制 (核心修改) =================
 
-    let targetSunY = -10; // 目标高度 (-10 是落下, 10 是正午)
-    let currentSunY = -10;
-    
-    // 背景配置颜色 (模拟不同场景的色调)
+    // 【修改点2】：控制逻辑变量
+    let currentSunY = -10;  // 当前高度
+    let moveState = 0;      // 0=静止, 1=上升, -1=下降
+    const SPEED = 0.08;     // ★ 速度控制：数字越小越慢，越大越快 (建议 0.05 - 0.15)
+    const MAX_H = 10;       // 最高点
+    const MIN_H = -10;      // 最低点
+
     const scenes = {
         ocean:  { skyTop: 0x0077ff, skyBot: 0x001133, ground: 0x004488 },
         city:   { skyTop: 0x555577, skyBot: 0x111122, ground: 0x111111 },
@@ -234,41 +161,41 @@
     };
     let currentScene = 'ocean';
 
-    // 切换场景函数
     window.changeScene = function(name) {
         currentScene = name;
-        // 更新按钮样式
         document.querySelectorAll('.bg-btn').forEach(btn => btn.classList.remove('active'));
         event.target.classList.add('active');
-        // 实际如果要换背景图，在这里 textureLoader.load('images/xxx.jpg')
     }
 
     function updateEnvironment() {
-        // 1. 太阳平滑移动
-        currentSunY += (targetSunY - currentSunY) * 0.05;
+        // 【修改点3】：改为增量运动
+        if (moveState !== 0) {
+            currentSunY += moveState * SPEED;
+            
+            // 限制范围 (Clamp)
+            if (currentSunY > MAX_H) currentSunY = MAX_H;
+            if (currentSunY < MIN_H) currentSunY = MIN_H;
+        }
+
+        // 应用位置
         sunMesh.position.set(0, currentSunY, -20);
         sunLight.position.set(0, currentSunY, -20);
 
-        // 2. 根据太阳高度计算 "白天程度" (0 = 黑夜, 1 = 白天)
+        // 计算 "白天程度" (0 = 黑夜, 1 = 白天)
         const dayProgress = Math.min(Math.max((currentSunY + 5) / 15, 0), 1);
 
-        // 3. 动态改变天空颜色 (简单的雾颜色变化)
+        // 颜色变化逻辑 (保持不变)
         const sceneConfig = scenes[currentScene];
         const skyColor = new THREE.Color(sceneConfig.skyBot).lerp(new THREE.Color(sceneConfig.skyTop), dayProgress);
         scene.fog.color.copy(skyColor);
         renderer.setClearColor(skyColor);
 
-        // 4. 太阳颜色变化 (低处红，高处黄)
         const sunColor = new THREE.Color(0xff0000).lerp(new THREE.Color(0xffffaa), dayProgress);
         sunMaterial.color.copy(sunColor);
         sunGlow.material.color.copy(sunColor);
 
-        // 5. 光照强度变化
         sunLight.intensity = dayProgress * 1.5;
         ambientLight.intensity = 0.2 + (dayProgress * 0.5);
-
-        // 6. 粒子动画 (稍微漂浮)
-        particleSystem.rotation.y += 0.001;
     }
 
     function animate() {
@@ -278,7 +205,7 @@
     }
     animate();
 
-    // ================= 3. MediaPipe Hands (AI 手势识别) =================
+    // ================= 3. MediaPipe Hands =================
     
     const videoElement = document.getElementById('input-video');
     const canvasElement = document.getElementById('output-canvas');
@@ -287,12 +214,11 @@
 
     function onResults(results) {
         statusText.classList.remove('loading');
-        statusText.classList.add('active');
-        statusText.innerText = "AI 视觉引擎已连接";
+        // statusText.classList.add('active'); // 暂时去掉，根据手势变色
 
         canvasCtx.save();
         canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-        canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+        // canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height); // 不画原图，只画骨架
 
         if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
             const landmarks = results.multiHandLandmarks[0];
@@ -301,40 +227,36 @@
             drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: '#00FF00', lineWidth: 2});
             drawLandmarks(canvasCtx, landmarks, {color: '#FF0000', lineWidth: 1, radius: 2});
 
-            // --- 核心算法：计算手掌张开程度 ---
-            // 我们计算指尖 (Tip) 到 手掌根部 (Wrist, index 0) 的距离
-            // index 4=拇指尖, 8=食指尖, 12=中指尖, 16=无名指尖, 20=小指尖
-            // 简单算法：计算中指指尖(12)到手腕(0)的距离
-            
+            // 计算张开程度
             const wrist = landmarks[0];
             const middleTip = landmarks[12];
-            const thumbTip = landmarks[4];
-            const pinkyTip = landmarks[20];
+            const dist = Math.sqrt(Math.pow(middleTip.x - wrist.x, 2) + Math.pow(middleTip.y - wrist.y, 2));
 
-            // 距离公式
-            const dist = Math.sqrt(
-                Math.pow(middleTip.x - wrist.x, 2) + 
-                Math.pow(middleTip.y - wrist.y, 2)
-            );
-
-            // 阈值判断 (由于是归一化坐标，0.4 左右通常是张开，0.2 左右是握拳)
-            // 我们可以用更鲁棒的方法：判断所有手指指尖是否远离掌心
+            // 【修改点4】：阈值判定与状态控制
+            // 0.35 以上算张开，0.25 以下算握拳，中间算“保持”
             
-            // 简单版：如果中指距离手腕够远，且拇指和小指分开 -> 张开
-            const handOpenness = dist; 
-
-            if (handOpenness > 0.35) {
-                // 手张开了 -> 太阳上升
-                statusText.innerText = "状态：🖐️ 张开 (太阳升起)";
-                targetSunY = 10; // 升到高空
+            if (dist > 0.32) {
+                // 手张开 -> 持续上升
+                moveState = 1;
+                statusText.innerText = "状态：🖐️ 张开 (正在上升)";
+                statusText.style.color = "#00ff00"; // 绿色
+            } else if (dist < 0.22) {
+                // 手握拳 -> 持续下降
+                moveState = -1;
+                statusText.innerText = "状态：✊ 握拳 (正在下降)";
+                statusText.style.color = "#ff4400"; // 橙红色
             } else {
-                // 手闭合了 -> 太阳落下
-                statusText.innerText = "状态：✊ 闭合 (太阳落下)";
-                targetSunY = -8; // 落到地平线以下
+                // 中间状态 -> 悬停
+                moveState = 0;
+                statusText.innerText = "状态：✋ 悬停 (请张开或握拳)";
+                statusText.style.color = "yellow";
             }
 
         } else {
-            statusText.innerText = "未检测到手势，请在摄像头前晃动手";
+            // 没检测到手 -> 停止
+            moveState = 0;
+            statusText.innerText = "未检测到手势，请伸手";
+            statusText.style.color = "white";
         }
         canvasCtx.restore();
     }
@@ -345,7 +267,7 @@
 
     hands.setOptions({
         maxNumHands: 1,
-        modelComplexity: 1, // 0最快, 1普通, 2最准. 1对显卡压力很小
+        modelComplexity: 1,
         minDetectionConfidence: 0.5,
         minTrackingConfidence: 0.5
     });
@@ -353,14 +275,11 @@
     hands.onResults(onResults);
 
     const cameraUtils = new Camera(videoElement, {
-        onFrame: async () => {
-            await hands.send({image: videoElement});
-        },
-        width: 320, // 降低处理分辨率以提高性能
+        onFrame: async () => { await hands.send({image: videoElement}); },
+        width: 320,
         height: 240
     });
     
-    // 启动摄像头
     cameraUtils.start();
 
 </script>
