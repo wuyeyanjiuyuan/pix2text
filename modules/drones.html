@@ -560,6 +560,7 @@
             const material = new THREE.SpriteMaterial({ 
                 map: tex, 
                 color: 0xffffff,
+                fog: false,  // ★ 核心修改：加上这一行，关闭雾气影响，永远保持最亮
                 transparent: true,
                 blending: THREE.AdditiveBlending, // 关键：光效叠加
                 depthWrite: false // 关键：防止遮挡黑边
