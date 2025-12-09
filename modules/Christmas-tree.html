@@ -54,14 +54,14 @@
 
 <div id="tree-container">
     <div class="ui-layer">
-        <div id="status-text" class="status-pill">正在加载高能光效...</div>
+        <div id="status-text" class="status-pill">正在点亮掌中星河...</div>
         <br>
         <label class="upload-btn">
             📷 上传照片
             <input type="file" id="file-input" accept="image/*" multiple>
         </label>
         <div style="margin-top:12px; font-size:12px; color:rgba(255,255,255,0.5); line-height:1.6;">
-            🖐️ 手在中心=刹车 | 手在边缘=加速<br>
+            🖐️ 手势控制旋转方向<br>
             ✊ 握拳：聚合 | 👌 捏合：抓取
         </div>
     </div>
@@ -79,7 +79,7 @@
 <script src="js/hands.js"></script>
 
 <script>
-    console.log(">>> [ChristmasTree] 极致闪耀版启动");
+    console.log(">>> [ChristmasTree] 星河霸主版启动");
 
     try {
         const container = document.getElementById('tree-canvas');
@@ -104,7 +104,6 @@
 
         // ================= 2. 材质与纹理 =================
         
-        // 2.1 基础光球 (用于组成的粒子)
         function createGoldOrbTexture() {
             const cvs = document.createElement('canvas');
             cvs.width = 64; cvs.height = 64;
@@ -119,55 +118,41 @@
             return new THREE.CanvasTexture(cvs);
         }
 
-        // 2.2 ★★★ 物理级星芒闪光纹理 (Lens Flare) ★★★
-        // 模拟相机光圈衍射：核心极白 + 十字星芒 + 外圈金晕
-        function createRealFlashTexture() {
-            const size = 128;
-            const center = size / 2;
+        // 闪光纹理
+        function createFlashTexture() {
             const cvs = document.createElement('canvas');
-            cvs.width = size; cvs.height = size;
+            cvs.width = 64; cvs.height = 64;
+            const ctx = cvs.getContext('2d');
+            const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+            gradient.addColorStop(0, 'rgba(255, 255, 255, 1)'); 
+            gradient.addColorStop(0.3, 'rgba(255, 255, 200, 0.9)'); 
+            gradient.addColorStop(0.6, 'rgba(255, 220, 100, 0.4)'); 
+            gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, 64, 64);
+            return new THREE.CanvasTexture(cvs);
+        }
+        
+        // ★ 星尘纹理 (更亮更实) ★
+        function createDotTexture() {
+            const cvs = document.createElement('canvas');
+            cvs.width = 32; cvs.height = 32;
             const ctx = cvs.getContext('2d');
             
-            // A. 基础柔光球 (Halo)
-            const gradient = ctx.createRadialGradient(center, center, 0, center, center, center);
-            // 0-10% 纯白 (视网膜残留区)
-            gradient.addColorStop(0, 'rgba(255, 255, 255, 1)'); 
-            // 10-30% 高亮金白
-            gradient.addColorStop(0.15, 'rgba(255, 255, 200, 1)'); 
-            // 30-60% 金色
-            gradient.addColorStop(0.4, 'rgba(255, 200, 50, 0.6)');
-            // 边缘透明
+            // 加一个柔和的光晕，不只是一个点
+            const gradient = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
+            gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+            gradient.addColorStop(0.5, 'rgba(200, 220, 255, 0.5)'); // 淡蓝光晕
             gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
             
             ctx.fillStyle = gradient;
-            ctx.fillRect(0, 0, size, size);
-
-            // B. 绘制十字星芒 (Spikes) - 制造锐利感
-            function drawSpike(w, h, alpha) {
-                ctx.save();
-                ctx.translate(center, center);
-                // 纵向光束
-                const spikeGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, h);
-                spikeGrad.addColorStop(0, `rgba(255, 255, 255, ${alpha})`);
-                spikeGrad.addColorStop(0.2, `rgba(255, 255, 200, ${alpha * 0.8})`);
-                spikeGrad.addColorStop(1, 'rgba(255, 215, 0, 0)');
-                
-                ctx.fillStyle = spikeGrad;
-                ctx.beginPath();
-                ctx.ellipse(0, 0, w, h, 0, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.restore();
-            }
-
-            // 画两道垂直的光束 (细长)
-            drawSpike(2, size * 0.45, 1.0); // 竖
-            drawSpike(size * 0.45, 2, 1.0); // 横
-            
+            ctx.fillRect(0, 0, 32, 32);
             return new THREE.CanvasTexture(cvs);
         }
 
         const goldTex = createGoldOrbTexture();
-        const flashTex = createRealFlashTexture(); // 使用新纹理
+        const flashTex = createFlashTexture();
+        const dotTex = createDotTexture();
 
         const matGoldHigh = new THREE.SpriteMaterial({ 
             map: goldTex, color: 0xffffff, transparent: true, opacity: 1.0, blending: THREE.AdditiveBlending 
@@ -178,23 +163,21 @@
         const matGoldLow = new THREE.SpriteMaterial({ 
             map: goldTex, color: 0xaa8844, transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending 
         });
-        
         const goldMats = [matGoldHigh, matGoldMid, matGoldLow];
 
         // ================= 3. 粒子系统 =================
         
         const PARTICLE_COUNT = 2000; 
-        const DUST_COUNT = 500;
+        const DUST_COUNT = 800; // ★ 星尘翻倍
         const FLASH_COUNT = 100;      
         
         const TREE_HEIGHT = 650;
         const TREE_BASE_RADIUS = 300;
 
         const particleGroup = new THREE.Group();
-        const dustGroup = new THREE.Group();  
+        // ★ 注意：不再单独 scene.add(dustGroup)，而是把 dust 加到 particleGroup
         const flashGroup = new THREE.Group(); 
         
-        scene.add(dustGroup);     
         scene.add(particleGroup); 
         scene.add(flashGroup);    
 
@@ -227,7 +210,7 @@
         topStar.visible = false;
         scene.add(topStar);
 
-        // 3.2 金色粒子
+        // 3.2 生成主粒子 (实心球)
         for (let i = 0; i < PARTICLE_COUNT; i++) {
             const mat = goldMats[Math.floor(Math.random() * goldMats.length)];
             const sprite = new THREE.Sprite(mat);
@@ -236,37 +219,68 @@
             particles.push(sprite);
         }
         
-        // 3.3 星尘
+        // 3.3 ★ 生成背景星尘 (加入 particleGroup) ★
         for (let i = 0; i < DUST_COUNT; i++) {
             const mat = new THREE.SpriteMaterial({
-                map: goldTex, color: 0x88aaff,
-                transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending
+                map: dotTex, 
+                color: 0xffffff, // 纯白最亮
+                transparent: true, 
+                opacity: 0.8,    // 提高不透明度
+                blending: THREE.AdditiveBlending
             });
             const sprite = new THREE.Sprite(mat);
             
-            const r = 800 + Math.random() * 700;
+            // 分布在更外层 (半径 600 ~ 1200)
+            const r = 600 + Math.random() * 600;
             const theta = Math.random() * Math.PI * 2;
             const phi = Math.acos(2 * Math.random() - 1);
             
-            sprite.position.set(
+            // 计算初始散开位置
+            const spreadPos = new THREE.Vector3(
                 r * Math.sin(phi) * Math.cos(theta),
                 r * Math.sin(phi) * Math.sin(theta),
                 r * Math.cos(phi)
             );
-            const s = Math.random() * 4 + 2;
+            
+            // 设定位置
+            sprite.position.copy(spreadPos);
+            
+            // 尺寸加大
+            const s = Math.random() * 5 + 3; // 3~8
             sprite.scale.set(s, s, 1);
-            dustGroup.add(sprite);
+            
+            // 数据绑定 (只在散开时存在，聚合时可以飞向树或者消失)
+            // 这里我们让它们聚合时飞向树的外部，形成一个光环
+            const treeAngle = Math.random() * Math.PI * 2;
+            const treeY = (Math.random() - 0.5) * TREE_HEIGHT * 1.5;
+            const treeR = 400 + Math.random() * 200; // 树外围
+            
+            sprite.userData = {
+                spreadPos: spreadPos,
+                treePos: new THREE.Vector3(
+                    Math.cos(treeAngle) * treeR,
+                    treeY,
+                    Math.sin(treeAngle) * treeR
+                ),
+                baseScale: s,
+                isDust: true,
+                blinkPhase: Math.random() * Math.PI * 2,
+                blinkSpeed: Math.random() * 0.005 + 0.002
+            };
+            
+            particleGroup.add(sprite); // ★ 关键：加入同一个组，跟随旋转
+            particles.push(sprite); // 加入动画循环
         }
 
-        // 3.4 ★ 闪光池 (纯白+金) ★
+        // 3.4 闪光池
         const flashPool = [];
         for(let i=0; i<FLASH_COUNT; i++) {
             const mat = new THREE.SpriteMaterial({
                 map: flashTex,
-                color: 0xffffff, // ★ 基础色纯白，纹理自带金色
+                color: 0xffaa00, 
                 transparent: true,
                 opacity: 0,
-                blending: THREE.AdditiveBlending, // 叠加混合
+                blending: THREE.AdditiveBlending, 
                 depthWrite: false
             });
             const sprite = new THREE.Sprite(mat);
@@ -276,19 +290,16 @@
         }
 
         function createParticleData(obj, isPhoto) {
-            // 树
             const y = (Math.random() - 0.5) * TREE_HEIGHT; 
             const relY = (y + TREE_HEIGHT/2) / TREE_HEIGHT; 
             const radius = TREE_BASE_RADIUS * Math.pow((1 - relY), 0.8) * (0.8 + Math.random()*0.4); 
             const angle = Math.random() * Math.PI * 2 * 12;
             const treePos = new THREE.Vector3(Math.cos(angle)*radius, y, Math.sin(angle)*radius);
 
-            // 球
             const maxR = 550; 
             const r = maxR * Math.cbrt(Math.random()); 
             const theta = Math.random() * Math.PI * 2; 
             const phi = Math.acos(2 * Math.random() - 1); 
-            
             const spreadPos = new THREE.Vector3(
                 r * Math.sin(phi) * Math.cos(theta),
                 r * Math.sin(phi) * Math.sin(theta),
@@ -344,7 +355,13 @@
             const mesh = new THREE.Mesh(geo, materials);
             mesh.userData.aspect = aspect;
             
+            // 找非照片、非星尘的粒子替换
             let idx = Math.floor(Math.random() * particles.length);
+            let safety = 0;
+            while((particles[idx].userData.isPhoto || particles[idx].userData.isDust) && safety < 100) {
+                idx = Math.floor(Math.random() * particles.length);
+                safety++;
+            }
             const oldSprite = particles[idx];
             
             createParticleData(mesh, true);
@@ -363,7 +380,7 @@
             new TWEEN.Tween(mesh.scale).to({x:w, y:h, z:2}, 800).easing(TWEEN.Easing.Elastic.Out).start();
         }
 
-        // ================= 5. 交互状态 (操控修正) =================
+        // ================= 5. 交互状态 =================
         let currentState = 'spread'; 
         let isPinching = false;
         let activePhoto = null; 
@@ -532,35 +549,21 @@
         });
         cameraUtils.start();
 
-        // ================= 7. 渲染循环 (含闪光特效) =================
+        // ================= 7. 渲染循环 =================
         function animate(time) {
             requestAnimationFrame(animate);
             TWEEN.update(time); 
 
-            // A. 旋转逻辑 (修正方向)
+            // A. 旋转逻辑
             if (currentState === 'spread' && !isPinching) {
                 if (isHandDetected) {
                     const dist = Math.sqrt(handPos.x*handPos.x + handPos.y*handPos.y);
-                    
                     if (dist < DEAD_ZONE) {
                         rotVelocity.x *= FRICTION_BRAKE;
                         rotVelocity.y *= FRICTION_BRAKE;
-                        if(Math.abs(rotVelocity.x) < 0.0001) rotVelocity.x = 0;
-                        if(Math.abs(rotVelocity.y) < 0.0001) rotVelocity.y = 0;
                     } else {
-                        // ★★★ 修正方向：上移=上转(负X)，右移=右转(正Y) ★★★
-                        // 注意：MediaPipe 坐标系下，上是 y<0，下是 y>0。
-                        // 但我在 handPos 计算时做了 (0.5-cy)*2，所以上是 y>0，下是 y<0。
-                        // Three.js 绕X轴转：正值向下转，负值向上转。
-                        // 所以：想向上转，需要给负速度 -> -handPos.y
                         const targetSpeedX = -handPos.y * MAX_SPEED; 
-                        
-                        // Three.js 绕Y轴转：正值向左转，负值向右转。
-                        // 你的需求：往右拨(x>0) -> 球往右转。往右转其实是绕Y轴顺时针，即负值？
-                        // 不，视觉上的“往右转”通常指物体表面向右移动，即绕Y轴旋转。
-                        // 让我们试一下正相关：
                         const targetSpeedY = handPos.x * MAX_SPEED; 
-                        
                         rotVelocity.x += (targetSpeedX - rotVelocity.x) * ACCELERATION * 10;
                         rotVelocity.y += (targetSpeedY - rotVelocity.y) * ACCELERATION * 10;
                     }
@@ -568,7 +571,6 @@
                     rotVelocity.x *= FRICTION_IDLE;
                     rotVelocity.y *= FRICTION_IDLE;
                 }
-                
                 particleGroup.rotation.x += rotVelocity.x;
                 particleGroup.rotation.y += rotVelocity.y;
                 
@@ -576,24 +578,26 @@
                 particleGroup.rotation.y += 0.005;
                 particleGroup.rotation.x *= 0.9; 
             }
-            
-            // 星尘反向慢转
-            dustGroup.rotation.y -= 0.0005;
 
-            // B. 闪光特效 (高频记者会)
+            // B. 闪光特效
             let activeFlashCount = 0;
             flashGroup.children.forEach(f => { if(f.visible) activeFlashCount++; });
-            
-            // 允许同时存在多达 30 个闪光
             if (activeFlashCount < 30 && Math.random() < 0.5) {
                 triggerRandomFlash();
             }
+            
+            // C. 星尘闪烁
+            particles.forEach(p => {
+                if(p.userData.isDust) {
+                    const s = Math.sin(time * p.userData.blinkSpeed + p.userData.blinkPhase);
+                    p.material.opacity = 0.4 + s * 0.2;
+                }
+            });
 
             renderer.render(scene, camera);
         }
         animate();
 
-        // 闪光逻辑
         function triggerRandomFlash() {
             const flash = flashGroup.children.find(s => !s.visible);
             if (!flash) return;
@@ -605,11 +609,9 @@
             
             flash.visible = true;
             flash.material.opacity = 1;
-            // 随机旋转增加灵动感
             flash.material.rotation = Math.random() * Math.PI; 
             flash.scale.set(0, 0, 1);
 
-            // 极速闪光：50ms 变大，100ms 消失
             new TWEEN.Tween(flash.scale)
                 .to({ x: 80, y: 80 }, 50)
                 .easing(TWEEN.Easing.Quadratic.Out)
