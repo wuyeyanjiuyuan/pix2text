@@ -1,11 +1,11 @@
 <style>
+    /* === 游戏容器 === */
     #game-container {
         position: relative; width: 100%; height: 600px;
         background: #000; border-radius: 12px; overflow: hidden;
         border: 2px solid #333;
         font-family: "Segoe UI", sans-serif;
-        cursor: none;
-        user-select: none;
+        cursor: none; user-select: none;
     }
 
     canvas { display: block; width: 100%; height: 100%; }
@@ -26,7 +26,7 @@
     .score-box { font-size: 28px; color: #ffcc00; font-weight: bold; }
     .hp-group { display: flex; flex-direction: column; align-items: flex-end; }
     .hp-label { color: #00ff00; font-size: 14px; margin-bottom: 4px; font-weight: bold;}
-    .hp-bar-bg { width: 200px; height: 16px; background: rgba(50,50,50,0.8); border: 1px solid #666; skew: -15deg; }
+    .hp-bar-bg { width: 200px; height: 16px; background: rgba(50,50,50,0.8); border: 1px solid #666; }
     .hp-bar-fill { width: 100%; height: 100%; background: linear-gradient(90deg, #00ff00, #adff2f); transition: width 0.1s; }
 
     /* 菜单屏幕 */
@@ -63,18 +63,23 @@
     }
     #pause-overlay.visible { opacity: 1; }
 
-    /* ★★★ 摄像头小窗 (强制置顶) ★★★ */
+    /* ★★★ 摄像头小窗 (修复版) ★★★ */
     .cam-box {
         position: absolute; bottom: 20px; right: 20px;
-        width: 140px; height: 105px; 
+        width: 160px; height: 120px; 
         border-radius: 8px; overflow: hidden;
-        border: 2px solid #00ff00; /* 绿色边框提示运行中 */
+        border: 2px solid #00ff00; 
         z-index: 9999; /* 确保最高层级 */
         background: #000;
         box-shadow: 0 0 15px rgba(0, 255, 0, 0.3);
-        transform: scaleX(-1);
+        transform: scaleX(-1); /* 镜像翻转 */
     }
-    #input-video { display: none; }
+    
+    /* ★ 关键修复：不要用 display: none，而是透明 ★ */
+    #input-video { 
+        position: absolute; width: 1px; height: 1px; 
+        opacity: 0; pointer-events: none; 
+    }
     #output-canvas { width: 100%; height: 100%; display: block; }
 
     @keyframes fadeIn { from { opacity: 0; transform: translate(-50%, -40%); } to { opacity: 1; transform: translate(-50%, -50%); } }
@@ -118,7 +123,6 @@
     <video id="input-video" playsinline></video>
 </div>
 
-<script src="js/camera_utils.js"></script>
 <script src="js/control_utils.js"></script>
 <script src="js/drawing_utils.js"></script>
 <script src="js/hands.js"></script>
@@ -126,7 +130,6 @@
 <script>
 /**
  * Neo Raiden Engine
- * 手势控制 + 像素风渲染 + 弹幕系统
  */
 const canvas = document.getElementById('main-canvas');
 const ctx = canvas.getContext('2d');
@@ -139,23 +142,17 @@ function resize() {
 window.addEventListener('resize', resize);
 resize();
 
-// ================= 1. 像素纹理工厂 (本地 Canvas 绘制) =================
+// ================= 1. 像素纹理工厂 =================
 const AssetFactory = {
-    // 玩家战机 (蓝色双翼)
     player: () => {
         const cvs = document.createElement('canvas'); cvs.width=64; cvs.height=64;
         const c = cvs.getContext('2d');
-        // 机翼
         c.fillStyle = '#ccc'; c.beginPath(); c.moveTo(32,10); c.lineTo(62,55); c.lineTo(2,55); c.fill();
-        // 机身
         c.fillStyle = '#00aaff'; c.fillRect(28, 5, 8, 50);
-        // 驾驶舱
         c.fillStyle = '#fff'; c.fillRect(30, 20, 4, 10);
-        // 引擎火光
         c.fillStyle = '#ffaa00'; c.fillRect(29, 55, 6, 5);
         return cvs;
     },
-    // 敌人1: 突击艇 (绿色，小，快)
     enemy_speeder: () => {
         const cvs = document.createElement('canvas'); cvs.width=40; cvs.height=40;
         const c = cvs.getContext('2d');
@@ -163,26 +160,23 @@ const AssetFactory = {
         c.beginPath(); c.moveTo(20, 38); c.lineTo(38, 2); c.lineTo(20, 10); c.lineTo(2, 2); c.fill();
         return cvs;
     },
-    // 敌人2: 拦截机 (橙色，会射击)
     enemy_shooter: () => {
         const cvs = document.createElement('canvas'); cvs.width=50; cvs.height=50;
         const c = cvs.getContext('2d');
         c.fillStyle = '#ff8800';
-        c.fillRect(15, 0, 20, 45); // 机身
-        c.fillRect(2, 10, 46, 15); // 机翼
-        c.fillStyle = '#550000'; c.fillRect(22, 35, 6, 6); // 炮口
+        c.fillRect(15, 0, 20, 45); 
+        c.fillRect(2, 10, 46, 15); 
+        c.fillStyle = '#550000'; c.fillRect(22, 35, 6, 6); 
         return cvs;
     },
-    // 敌人3: 母舰 (紫色，大，慢)
     enemy_carrier: () => {
         const cvs = document.createElement('canvas'); cvs.width=80; cvs.height=80;
         const c = cvs.getContext('2d');
         c.fillStyle = '#aa00ff';
-        c.fillRect(20, 5, 40, 70); // 主体
+        c.fillRect(20, 5, 40, 70); 
         c.fillStyle = '#7700cc';
-        c.fillRect(5, 20, 15, 40); // 左舱
-        c.fillRect(60, 20, 15, 40); // 右舱
-        c.fillStyle = '#ff0055'; c.beginPath(); c.arc(40, 40, 10, 0, Math.PI*2); c.fill(); // 核心
+        c.fillRect(5, 20, 15, 40); c.fillRect(60, 20, 15, 40); 
+        c.fillStyle = '#ff0055'; c.beginPath(); c.arc(40, 40, 10, 0, Math.PI*2); c.fill(); 
         return cvs;
     }
 };
@@ -207,19 +201,18 @@ class Game {
             x: canvas.width / 2, y: canvas.height - 100,
             w: 50, h: 50,
             hp: 100, maxHp: 100,
-            speed: 0.15 // 跟随手势的灵敏度
+            speed: 0.15 
         };
         
         this.handTarget = { x: canvas.width/2, y: canvas.height - 100 };
         this.hasHand = false;
 
-        this.bullets = []; // 玩家子弹
-        this.ebullets = []; // 敌人子弹 (新增)
+        this.bullets = []; 
+        this.ebullets = []; 
         this.enemies = [];
         this.particles = []; 
         this.stars = [];     
 
-        // 初始化星空
         for(let i=0; i<80; i++) {
             this.stars.push({
                 x: Math.random() * canvas.width,
@@ -235,7 +228,7 @@ class Game {
         this.state = 'PLAYING';
         document.getElementById('start-screen').classList.remove('active');
         document.getElementById('gameover-screen').classList.remove('active');
-        loop();
+        gameLoop();
     }
 
     restart() { this.start(); }
@@ -254,40 +247,35 @@ class Game {
     }
 
     update() {
-        // 暂停逻辑
         if (!this.hasHand && this.state === 'PLAYING') {
             document.getElementById('pause-overlay').classList.add('visible');
-            return; // 暂停更新，但不暂停渲染
+            return; 
         } else {
             document.getElementById('pause-overlay').classList.remove('visible');
         }
 
         if (this.state !== 'PLAYING') return;
 
-        // 1. 玩家移动 (平滑跟随)
+        // 玩家移动
         const dx = this.handTarget.x - this.player.x;
         const dy = this.handTarget.y - this.player.y;
         this.player.x += dx * this.player.speed;
         this.player.y += dy * this.player.speed;
         
-        // 边界限制
         this.player.x = Math.max(25, Math.min(canvas.width - 25, this.player.x));
         this.player.y = Math.max(25, Math.min(canvas.height - 25, this.player.y));
 
-        // 2. 玩家射击
+        // 射击
         if (this.frames % 8 === 0) {
             this.bullets.push({ x: this.player.x, y: this.player.y - 30, vx: 0, vy: -12, w: 6, h: 20 });
-            // 双发
             this.bullets.push({ x: this.player.x - 15, y: this.player.y - 10, vx: -1, vy: -12, w: 4, h: 15 });
             this.bullets.push({ x: this.player.x + 15, y: this.player.y - 10, vx: 1, vy: -12, w: 4, h: 15 });
         }
 
-        // 3. 生成敌人 (混合刷新)
+        // 生成敌人
         if (this.frames % 50 === 0) this.spawnEnemy();
 
-        // 4. 更新所有实体
         this.updateEntities();
-        
         this.frames++;
     }
 
@@ -296,41 +284,33 @@ class Game {
         const x = Math.random() * (canvas.width - 60) + 30;
         
         if (rand < 0.5) {
-            // 突击艇 (Speeder): 蛇形走位
             this.enemies.push({ 
                 type: 'speeder', x: x, y: -40, w: 40, h: 40, 
-                hp: 3, maxHp: 3, 
-                img: Assets.speeder,
-                vx: 0, vy: 5, t: 0 // t用于正弦波计算
+                hp: 3, maxHp: 3, img: Assets.speeder,
+                vx: 0, vy: 5, t: 0 
             });
         } else if (rand < 0.8) {
-            // 拦截机 (Shooter): 会射击
             this.enemies.push({ 
                 type: 'shooter', x: x, y: -50, w: 50, h: 50, 
-                hp: 6, maxHp: 6, 
-                img: Assets.shooter,
-                vx: 0, vy: 2, 
-                lastShot: this.frames
+                hp: 6, maxHp: 6, img: Assets.shooter,
+                vx: 0, vy: 2, lastShot: this.frames
             });
         } else {
-            // 母舰 (Carrier): 肉盾
             this.enemies.push({ 
                 type: 'carrier', x: x, y: -80, w: 80, h: 80, 
-                hp: 25, maxHp: 25, 
-                img: Assets.carrier,
+                hp: 25, maxHp: 25, img: Assets.carrier,
                 vx: 0, vy: 0.8 
             });
         }
     }
 
     updateEntities() {
-        // --- 玩家子弹 ---
+        // 玩家子弹
         for (let i = this.bullets.length - 1; i >= 0; i--) {
             let b = this.bullets[i];
             b.x += b.vx; b.y += b.vy;
             if (b.y < -20) { this.bullets.splice(i, 1); continue; }
 
-            // 击中敌人
             for (let j = this.enemies.length - 1; j >= 0; j--) {
                 let e = this.enemies[j];
                 if (this.checkCollide(b, e)) {
@@ -343,13 +323,11 @@ class Game {
             }
         }
 
-        // --- 敌人弹幕 (新增) ---
+        // 敌人子弹
         for (let i = this.ebullets.length - 1; i >= 0; i--) {
             let b = this.ebullets[i];
             b.x += b.vx; b.y += b.vy;
             if (b.y > canvas.height + 20) { this.ebullets.splice(i, 1); continue; }
-            
-            // 击中玩家
             if (this.checkCollide(b, this.player)) {
                 this.createExplosion(b.x, b.y, 5, '#ff0000');
                 this.ebullets.splice(i, 1);
@@ -357,22 +335,13 @@ class Game {
             }
         }
 
-        // --- 敌人行为 ---
+        // 敌人
         for (let i = this.enemies.length - 1; i >= 0; i--) {
             let e = this.enemies[i];
-            
-            // 移动逻辑
-            if (e.type === 'speeder') {
-                e.t += 0.1;
-                e.x += Math.sin(e.t) * 4; // 蛇形
-                e.y += e.vy;
-            } else {
-                e.y += e.vy;
-            }
+            if (e.type === 'speeder') { e.t += 0.1; e.x += Math.sin(e.t) * 4; e.y += e.vy; } 
+            else { e.y += e.vy; }
 
-            // 射击逻辑
             if (e.type === 'shooter' && (this.frames - e.lastShot > 120)) {
-                // 瞄准玩家
                 const angle = Math.atan2(this.player.y - e.y, this.player.x - e.x);
                 this.ebullets.push({
                     x: e.x, y: e.y + 20,
@@ -382,32 +351,24 @@ class Game {
                 e.lastShot = this.frames;
             }
 
-            // 撞击玩家
             if (this.checkCollide(e, this.player)) {
                 this.createExplosion(e.x, e.y, 20, '#ff0000');
                 this.enemies.splice(i, 1);
                 this.playerDamage(20);
                 continue;
             }
-
             if (e.y > canvas.height + 50) this.enemies.splice(i, 1);
         }
 
-        // --- 特效与背景 ---
         this.updateParticles();
-        this.stars.forEach(s => {
-            s.y += s.speed;
-            if (s.y > canvas.height) s.y = 0;
-        });
+        this.stars.forEach(s => { s.y += s.speed; if (s.y > canvas.height) s.y = 0; });
     }
 
     playerDamage(dmg) {
         this.player.hp -= dmg;
         this.createExplosion(this.player.x, this.player.y, 10, '#ffaa00');
-        // 屏幕震动效果 (简单位移)
         canvas.style.transform = `translate(${Math.random()*10-5}px, ${Math.random()*10-5}px)`;
         setTimeout(() => canvas.style.transform = 'none', 50);
-        
         this.updateUI();
         if (this.player.hp <= 0) {
             this.state = 'GAMEOVER';
@@ -425,7 +386,6 @@ class Game {
         this.updateUI();
     }
 
-    // --- 辅助 ---
     checkCollide(a, b) {
         return Math.abs(a.x - b.x) < (a.w + b.w)/2.5 && 
                Math.abs(a.y - b.y) < (a.h + b.h)/2.5;
@@ -458,8 +418,8 @@ class Game {
 
     draw() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-        // 星空
+        
+        // Background
         ctx.fillStyle = '#fff';
         this.stars.forEach(s => {
             ctx.globalAlpha = Math.random() * 0.5 + 0.2;
@@ -467,34 +427,22 @@ class Game {
         });
         ctx.globalAlpha = 1;
 
-        if (this.state === 'PLAYING' || this.state === 'PAUSED') { // 暂停时也渲染，但不更新
-            // 绘制玩家
+        if (this.state === 'PLAYING' || this.state === 'PAUSED') {
             ctx.drawImage(Assets.player, this.player.x - 32, this.player.y - 32);
-
-            // 绘制子弹
-            this.bullets.forEach(b => {
-                ctx.fillStyle = '#00ffff';
-                ctx.fillRect(b.x - b.w/2, b.y - b.h/2, b.w, b.h);
-            });
-            this.ebullets.forEach(b => {
-                ctx.fillStyle = b.color;
-                ctx.beginPath(); ctx.arc(b.x, b.y, 4, 0, Math.PI*2); ctx.fill();
-            });
-
-            // 绘制敌人
+            
+            this.bullets.forEach(b => { ctx.fillStyle = '#00ffff'; ctx.fillRect(b.x - b.w/2, b.y - b.h/2, b.w, b.h); });
+            this.ebullets.forEach(b => { ctx.fillStyle = b.color; ctx.beginPath(); ctx.arc(b.x, b.y, 4, 0, Math.PI*2); ctx.fill(); });
+            
             this.enemies.forEach(e => {
                 ctx.drawImage(e.img, e.x - e.w/2, e.y - e.h/2, e.w, e.h);
-                // 血条
                 if(e.maxHp > 5) {
                     ctx.fillStyle = 'red'; ctx.fillRect(e.x - 20, e.y - e.h/2 - 10, 40, 4);
                     ctx.fillStyle = '#0f0'; ctx.fillRect(e.x - 20, e.y - e.h/2 - 10, 40 * (e.hp/e.maxHp), 4);
                 }
             });
 
-            // 绘制特效
             this.particles.forEach(p => {
-                ctx.globalAlpha = p.life;
-                ctx.fillStyle = p.color;
+                ctx.globalAlpha = p.life; ctx.fillStyle = p.color;
                 ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2); ctx.fill();
             });
             ctx.globalAlpha = 1;
@@ -504,36 +452,58 @@ class Game {
 
 const game = new Game();
 
-function loop() {
+function gameLoop() {
     game.update();
     game.draw();
-    if(game.state === 'PLAYING') requestAnimationFrame(loop);
+    if(game.state === 'PLAYING') requestAnimationFrame(gameLoop);
 }
 
-// ================= 3. MediaPipe 手势输入 =================
+// ================= 3. ★ 原生摄像头启动逻辑 (修复黑屏) ★ =================
 const videoElement = document.getElementById('input-video');
 const canvasElement = document.getElementById('output-canvas');
 const canvasCtx = canvasElement.getContext('2d');
 
+async function startCamera() {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+            video: { width: 320, height: 240 } 
+        });
+        videoElement.srcObject = stream;
+        videoElement.onloadedmetadata = () => {
+            videoElement.play();
+            processVideo();
+        };
+    } catch (err) {
+        console.error("Camera Error:", err);
+        alert("摄像头启动失败，请检查权限");
+    }
+}
+
+async function processVideo() {
+    await hands.send({image: videoElement});
+    requestAnimationFrame(processVideo);
+}
+
 function onResults(results) {
+    // 绘制小窗预览
     canvasCtx.save();
     canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
     canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
-
+    
     if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
         const landmarks = results.multiHandLandmarks[0];
+        
+        // 绘制骨架
         drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: '#00FF00', lineWidth: 2});
         drawLandmarks(canvasCtx, landmarks, {color: '#FF0000', lineWidth: 1, radius: 2});
 
-        // 核心：手掌中心映射
+        // 核心：控制映射
         const cx = landmarks[9].x; 
         const cy = landmarks[9].y;
         
-        // 映射到游戏坐标 (注意镜像翻转：1-cx)
         game.handTarget.x = (1 - cx) * canvas.width;
         game.handTarget.y = cy * canvas.height;
         game.hasHand = true;
-
     } else {
         game.hasHand = false;
     }
@@ -544,10 +514,7 @@ const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@me
 hands.setOptions({maxNumHands: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5});
 hands.onResults(onResults);
 
-const cameraUtils = new Camera(videoElement, {
-    onFrame: async () => { await hands.send({image: videoElement}); },
-    width: 320, height: 240
-});
-cameraUtils.start();
+// 启动！
+startCamera();
 
 </script>
