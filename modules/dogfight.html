@@ -69,7 +69,7 @@
     }
     #pause-overlay.visible { opacity: 1; }
 
-    /* ★★★ 摄像头小窗 (圣诞树同款配置) ★★★ */
+    /* ★★★ 摄像头小窗 (样式完全照搬 Christmas-tree.html) ★★★ */
     .cam-box {
         position: absolute; bottom: 20px; right: 20px;
         width: 140px; height: 105px; 
@@ -80,11 +80,12 @@
         transform: scaleX(-1);
     }
     
-    /* ★ 修复：去除 width:1px，改用 opacity:0 隐藏，确保浏览器渲染它 ★ */
+    /* ★★★ 关键修复：这里的样式必须和圣诞树一样 ★★★ */
     #input-video { 
-        position: absolute; top: 0; left: 0;
-        opacity: 0; pointer-events: none; 
-        z-index: -1;
+        position: absolute; 
+        opacity: 0; 
+        pointer-events: none; 
+        /* 不要设置 width: 1px! 让它自然撑开，否则 MediaPipe 读不到尺寸 */
     }
     #output-canvas { width: 100%; height: 100%; display: block; }
 
@@ -95,7 +96,7 @@
     <canvas id="main-canvas"></canvas>
 
     <div class="ui-overlay">
-        <div id="status-text" class="status-pill">1. 正在加载 AI 模型...</div>
+        <div id="status-text" class="status-pill">1. 等待脚本加载...</div>
 
         <div class="hud-bar">
             <div class="score-box"><span style="font-size:14px;color:#aaa">SCORE</span> <span id="ui-score">000000</span></div>
@@ -127,7 +128,7 @@
     </div>
 
     <div class="cam-box"><canvas id="output-canvas"></canvas></div>
-    <video id="input-video" playsinline autoplay muted></video>
+    <video id="input-video" playsinline></video>
 </div>
 
 <script src="js/camera_utils.js"></script>
@@ -137,7 +138,7 @@
 
 <script>
 /**
- * Neo Raiden Engine (Fixed Camera)
+ * Neo Raiden Engine
  */
 const canvas = document.getElementById('main-canvas');
 const ctx = canvas.getContext('2d');
@@ -468,16 +469,22 @@ function loop() {
     if(game.state === 'PLAYING') requestAnimationFrame(loop);
 }
 
-// ================= 3. MediaPipe 手势输入 (修复版) =================
+// ================= 3. MediaPipe 手势输入 (圣诞树同款配置) =================
 const videoElement = document.getElementById('input-video');
 const canvasElement = document.getElementById('output-canvas');
 const canvasCtx = canvasElement.getContext('2d');
 
 function onResults(results) {
-    // 状态反馈：AI 跑起来了
-    statusText.innerText = "3. 引擎就绪：请伸手";
-    statusText.style.color = "#00ff00";
-    statusText.style.borderColor = "#00ff00";
+    if(statusText.innerText.includes("加载")) {
+        statusText.innerText = "2. 正在启动摄像头...";
+    }
+    
+    // 如果有图像，说明 AI 跑通了
+    if(results.image) {
+        statusText.innerText = "3. 引擎就绪：请展示手掌";
+        statusText.style.color = "#00ff00";
+        statusText.style.borderColor = "#00ff00";
+    }
 
     canvasCtx.save();
     canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
@@ -501,18 +508,20 @@ function onResults(results) {
     canvasCtx.restore();
 }
 
-// 步骤1：加载 Hands
+// 步骤1：加载模型
 statusText.innerText = "1. 正在加载 AI 模型...";
 const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
 hands.setOptions({maxNumHands: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5});
 hands.onResults(onResults);
 
-// 步骤2：启动摄像头
-statusText.innerText = "2. 正在启动摄像头...";
+// 步骤2：启动摄像头 (使用 CameraUtils，和圣诞树一模一样)
 const cameraUtils = new Camera(videoElement, {
     onFrame: async () => { await hands.send({image: videoElement}); },
     width: 320, height: 240
 });
-cameraUtils.start();
+cameraUtils.start().catch(err => {
+    statusText.innerText = "❌ 摄像头失败: " + err;
+    statusText.style.background = "red";
+});
 
 </script>
