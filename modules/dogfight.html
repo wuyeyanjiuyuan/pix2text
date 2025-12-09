@@ -3,7 +3,7 @@
     #game-container {
         position: relative; width: 100%; height: 600px;
         background: #000; border-radius: 12px; overflow: hidden;
-        border: 2px solid #333; /* 扁平边框，无阴影 */
+        border: 2px solid #333;
         font-family: "Segoe UI", sans-serif;
         cursor: none; user-select: none;
     }
@@ -17,15 +17,16 @@
         padding: 20px; box-sizing: border-box; z-index: 10;
     }
 
-    /* 状态指示器 (加载中...) */
+    /* 状态指示器 (诊断用) */
     .status-pill {
         position: absolute; top: 20px; left: 20px;
         display: inline-block; padding: 6px 12px;
-        background: rgba(0, 255, 255, 0.2); 
-        border: 1px solid rgba(0, 255, 255, 0.5);
+        background: rgba(0, 0, 0, 0.6); 
+        border: 1px solid rgba(255, 255, 255, 0.3);
         border-radius: 4px; backdrop-filter: blur(5px);
-        font-size: 12px; color: #00ffff;
+        font-size: 12px; color: #ffff00;
         pointer-events: auto;
+        transition: color 0.3s;
     }
 
     /* HUD */
@@ -68,7 +69,7 @@
     }
     #pause-overlay.visible { opacity: 1; }
 
-    /* ★★★ 摄像头小窗 (和圣诞树一样的稳健配置) ★★★ */
+    /* ★★★ 摄像头小窗 (圣诞树同款配置) ★★★ */
     .cam-box {
         position: absolute; bottom: 20px; right: 20px;
         width: 140px; height: 105px; 
@@ -79,11 +80,11 @@
         transform: scaleX(-1);
     }
     
-    /* ★ 关键修复：不能用 display:none，必须用 opacity:0 ★ */
+    /* ★ 修复：去除 width:1px，改用 opacity:0 隐藏，确保浏览器渲染它 ★ */
     #input-video { 
         position: absolute; top: 0; left: 0;
-        width: 1px; height: 1px; opacity: 0; 
-        pointer-events: none; 
+        opacity: 0; pointer-events: none; 
+        z-index: -1;
     }
     #output-canvas { width: 100%; height: 100%; display: block; }
 
@@ -94,7 +95,7 @@
     <canvas id="main-canvas"></canvas>
 
     <div class="ui-overlay">
-        <div id="status-text" class="status-pill">系统启动中...</div>
+        <div id="status-text" class="status-pill">1. 正在加载 AI 模型...</div>
 
         <div class="hud-bar">
             <div class="score-box"><span style="font-size:14px;color:#aaa">SCORE</span> <span id="ui-score">000000</span></div>
@@ -126,7 +127,7 @@
     </div>
 
     <div class="cam-box"><canvas id="output-canvas"></canvas></div>
-    <video id="input-video" playsinline></video>
+    <video id="input-video" playsinline autoplay muted></video>
 </div>
 
 <script src="js/camera_utils.js"></script>
@@ -136,7 +137,7 @@
 
 <script>
 /**
- * Neo Raiden Engine (Fixed Camera Version)
+ * Neo Raiden Engine (Fixed Camera)
  */
 const canvas = document.getElementById('main-canvas');
 const ctx = canvas.getContext('2d');
@@ -444,7 +445,7 @@ class Game {
             
             this.enemies.forEach(e => {
                 ctx.drawImage(e.img, e.x - e.w/2, e.y - e.h/2, e.w, e.h);
-                if(e.maxHp > 5) { // Boss血条
+                if(e.maxHp > 5) {
                     ctx.fillStyle = 'red'; ctx.fillRect(e.x - 20, e.y - e.h/2 - 10, 40, 4);
                     ctx.fillStyle = '#0f0'; ctx.fillRect(e.x - 20, e.y - e.h/2 - 10, 40 * (e.hp/e.maxHp), 4);
                 }
@@ -467,17 +468,16 @@ function loop() {
     if(game.state === 'PLAYING') requestAnimationFrame(loop);
 }
 
-// ================= 3. MediaPipe (圣诞树同款配置) =================
+// ================= 3. MediaPipe 手势输入 (修复版) =================
 const videoElement = document.getElementById('input-video');
 const canvasElement = document.getElementById('output-canvas');
 const canvasCtx = canvasElement.getContext('2d');
 
 function onResults(results) {
-    if(statusText.innerText.includes("启动")) {
-        statusText.innerText = "系统就绪：请展示手掌";
-        statusText.style.color = "#00ff00";
-        statusText.style.borderColor = "#00ff00";
-    }
+    // 状态反馈：AI 跑起来了
+    statusText.innerText = "3. 引擎就绪：请伸手";
+    statusText.style.color = "#00ff00";
+    statusText.style.borderColor = "#00ff00";
 
     canvasCtx.save();
     canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
@@ -485,7 +485,6 @@ function onResults(results) {
 
     if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
         const landmarks = results.multiHandLandmarks[0];
-        
         drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: '#00FF00', lineWidth: 2});
         drawLandmarks(canvasCtx, landmarks, {color: '#FF0000', lineWidth: 1, radius: 2});
 
@@ -502,17 +501,18 @@ function onResults(results) {
     canvasCtx.restore();
 }
 
+// 步骤1：加载 Hands
+statusText.innerText = "1. 正在加载 AI 模型...";
 const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
 hands.setOptions({maxNumHands: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5});
 hands.onResults(onResults);
 
+// 步骤2：启动摄像头
+statusText.innerText = "2. 正在启动摄像头...";
 const cameraUtils = new Camera(videoElement, {
     onFrame: async () => { await hands.send({image: videoElement}); },
     width: 320, height: 240
 });
-cameraUtils.start().catch(err => {
-    statusText.innerText = "❌ 摄像头启动失败";
-    statusText.style.background = "red";
-});
+cameraUtils.start();
 
 </script>
