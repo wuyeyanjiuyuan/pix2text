@@ -1,98 +1,114 @@
 <style>
-    /* === 游戏容器 === */
-    #mario-app {
+    /* === 容器布局 === */
+    #mario-wrapper {
         position: relative;
         width: 100%;
-        height: 600px; /* 适配主页容器高度 */
+        height: 600px;
         background: #000;
-        font-family: 'Courier New', Courier, monospace;
         border-radius: 12px;
         overflow: hidden;
-        user-select: none;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        display: flex;
+        justify-content: center;
+        align-items: center;
     }
 
-    /* 游戏画布：居中显示，像素风格 */
-    #mario-game-canvas {
-        display: block;
+    /* === 嵌入的游戏 iframe === */
+    #game-iframe {
         width: 100%;
         height: 100%;
-        image-rendering: pixelated; /* 关键：像素画不模糊 */
-        background: #5c94fc; /* 经典蓝天 */
+        border: none;
+        outline: none;
+        display: block;
     }
 
-    /* === UI 层 === */
-    .mario-ui {
-        position: absolute; top: 20px; left: 20px; z-index: 10;
-        color: white; text-shadow: 2px 2px 0 #000; pointer-events: none;
-    }
-    .score-board { font-size: 20px; font-weight: bold; margin-bottom: 5px; }
-    
-    .gesture-hint-box { 
-        font-size: 13px; background: rgba(0,0,0,0.6); 
-        padding: 10px; border-radius: 8px; border-left: 4px solid #e52521;
-        display: flex; flex-direction: column; gap: 5px;
-    }
-
-    /* === 摄像头画中画 === */
-    .mario-cam-preview {
-        position: absolute; bottom: 20px; right: 20px;
-        width: 160px; height: 120px; 
-        border: 3px solid #fff; border-radius: 8px; 
-        background: #000; overflow: hidden; z-index: 20;
-        box-shadow: 0 5px 15px rgba(0,0,0,0.5);
-    }
-    #mario-video-input { display: none; } /* 隐藏原始流 */
-    #mario-hand-canvas { width: 100%; height: 100%; transform: scaleX(-1); }
-
-    /* === 开始/结束 遮罩 === */
-    #mario-overlay {
+    /* === UI 覆盖层 === */
+    .overlay-ui {
         position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-        background: rgba(0,0,0,0.85); z-index: 50;
+        pointer-events: none; /* 让鼠标事件穿透到 iframe */
+        z-index: 10;
+    }
+
+    /* 摄像头画中画 */
+    .cam-box {
+        position: absolute; bottom: 20px; right: 20px;
+        width: 160px; height: 120px;
+        border: 3px solid rgba(255,255,255,0.5);
+        border-radius: 8px; background: #000;
+        overflow: hidden;
+        transform: scaleX(-1); /* 镜像翻转 */
+        z-index: 20;
+    }
+    #input-video { display: none; }
+    #debug-canvas { width: 100%; height: 100%; }
+
+    /* 状态指示器 */
+    .status-panel {
+        position: absolute; top: 20px; left: 20px;
+        background: rgba(0,0,0,0.7);
+        padding: 10px; border-radius: 8px;
+        color: white; font-family: 'Segoe UI', sans-serif; font-size: 14px;
+        border-left: 4px solid #e52521;
+        pointer-events: none;
+    }
+    .status-item { margin-bottom: 4px; opacity: 0.5; transition: 0.1s; }
+    .status-item.active { opacity: 1; color: #ffce00; font-weight: bold; text-shadow: 0 0 5px orange; }
+    
+    .key-badge {
+        display: inline-block; width: 20px; height: 20px; 
+        background: #333; text-align: center; line-height: 20px; 
+        border-radius: 4px; font-size: 12px; margin-right: 5px;
+    }
+
+    /* 遮罩提示 */
+    #loading-mask {
+        position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(0,0,0,0.9); color: #fff; z-index: 50;
         display: flex; flex-direction: column;
         justify-content: center; align-items: center;
-        color: #fff; text-align: center;
+        text-align: center;
         backdrop-filter: blur(5px);
     }
-    .mario-title { 
-        font-size: 40px; color: #ffce00; 
-        text-shadow: 4px 4px 0 #d32f2f; margin-bottom: 20px; letter-spacing: 2px;
+    .btn-load {
+        margin-top: 20px; padding: 12px 30px;
+        background: #e52521; color: white; border: 2px solid white;
+        font-size: 18px; cursor: pointer; border-radius: 30px;
+        pointer-events: auto; transition: 0.2s;
+        font-weight: bold;
     }
-    .mario-btn {
-        padding: 12px 30px; font-size: 20px; background: #e52521; color: white;
-        border: 3px solid #fff; cursor: pointer; font-family: inherit; font-weight: bold;
-        transition: transform 0.1s; border-radius: 4px;
-    }
-    .mario-btn:hover { background: #ff4444; }
-    .mario-btn:active { transform: scale(0.95); }
-    .hidden { display: none !important; }
+    .btn-load:hover { background: #ff4444; transform: scale(1.05); }
 </style>
 
-<div id="mario-app">
-    <div class="mario-ui">
-        <div class="score-board">WORLD 1-1 <span style="margin-left:20px">COINS: <span id="mario-coin-count">0</span></span></div>
-        <div class="gesture-hint-box">
-            <div>✋ <b>手掌倾斜</b> ➜ 左右跑</div>
-            <div>👌 <b>食指拇指捏合</b> ➜ 跳跃</div>
+<div id="mario-wrapper">
+    <div id="loading-mask">
+        <h1 style="color:#ffce00; margin-bottom:10px; text-shadow: 2px 2px 0 #d32f2f;">GESTURE MARIO</h1>
+        <p style="color:#ccc; font-size:14px; max-width:400px; line-height:1.6;">
+            已检测到模块：/modules/FullScreenMario/index.html<br>
+            <span style="color:#e52521">注意：启动后请点击一下游戏画面以获取焦点</span>
+        </p>
+        <div style="text-align:left; margin: 20px 0; background:#222; padding:20px; border-radius:8px; border:1px solid #444;">
+            <div style="margin-bottom:8px">✋ <b>手腕倾斜</b> ➜ <span style="color:cyan">左右移动</span></div>
+            <div style="margin-bottom:8px">✊ <b>握拳</b> ➜ <span style="color:orange">加速/开火 (Shift)</span></div>
+            <div>👌 <b>捏合手指</b> ➜ <span style="color:yellow">跳跃 (Up/Space)</span></div>
+        </div>
+        <button class="btn-load" id="btn-inject-game">启动游戏控制</button>
+    </div>
+
+    <div class="overlay-ui">
+        <div class="status-panel">
+            <div style="margin-bottom:8px; border-bottom:1px solid #555; padding-bottom:5px;">CONTROL STATUS</div>
+            <div class="status-item" id="st-left"><span class="key-badge">←</span> LEFT</div>
+            <div class="status-item" id="st-right"><span class="key-badge">→</span> RIGHT</div>
+            <div class="status-item" id="st-run"><span class="key-badge">S</span> RUN/FIRE</div>
+            <div class="status-item" id="st-jump"><span class="key-badge">↑</span> JUMP</div>
+        </div>
+        <div class="cam-box">
+            <canvas id="debug-canvas"></canvas>
         </div>
     </div>
 
-    <canvas id="mario-game-canvas"></canvas>
-
-    <div class="mario-cam-preview">
-        <canvas id="mario-hand-canvas"></canvas>
-    </div>
+    <iframe id="game-iframe" src="about:blank" allow="autoplay; fullscreen; keyboard-map"></iframe>
     
-    <div id="mario-overlay">
-        <div class="mario-title">GESTURE MARIO</div>
-        <div style="margin-bottom: 30px; line-height: 1.6; color: #ccc; font-size: 14px;">
-            请开启摄像头并站在屏幕前<br>
-            露出单手进行控制
-        </div>
-        <button class="mario-btn" id="btn-start-mario">START GAME</button>
-    </div>
-
-    <video id="mario-video-input" playsinline></video>
+    <video id="input-video" playsinline></video>
 </div>
 
 <script src="js/camera_utils.js"></script>
@@ -101,465 +117,227 @@
 <script src="js/hands.js"></script>
 
 <script>
-// 使用 IIFE (立即执行函数) 包裹，防止变量污染全局 window
 (function() {
-    // ================= 配置常量 =================
-    const CANVAS_WIDTH = 800;
-    const CANVAS_HEIGHT = 600;
-    const TILE_SIZE = 40;
-
-    // DOM 元素引用
-    const appContainer = document.getElementById('mario-app');
-    const canvas = document.getElementById('mario-game-canvas');
-    const ctx = canvas.getContext('2d');
-    const handCanvas = document.getElementById('mario-hand-canvas');
-    const handCtx = handCanvas.getContext('2d');
-    const videoElement = document.getElementById('mario-video-input');
-    const overlay = document.getElementById('mario-overlay');
-    const btnStart = document.getElementById('btn-start-mario');
-    const coinUi = document.getElementById('mario-coin-count');
-
-    // 游戏状态
-    const GAME = {
-        running: false,
-        gameOver: false,
-        coins: 0,
-        cameraX: 0,
-        gravity: 0.6,
-        friction: 0.85,
-        frame: 0
-    };
-
-    // 输入状态 (由手势更新)
-    const INPUT = {
-        left: false,
-        right: false,
-        jump: false,
-        jumpPressed: false
-    };
-
-    // 适配 Canvas 尺寸
-    function resizeCanvas() {
-        if (!appContainer) return;
-        // 强制画布内部分辨率
-        canvas.width = CANVAS_WIDTH;
-        canvas.height = CANVAS_HEIGHT;
-    }
-    // 初始化调用一次
-    resizeCanvas();
-
-    // ================= 实体类定义 =================
-
-    class Player {
-        constructor() {
-            this.w = 30; this.h = 30;
-            this.x = 100; this.y = 100;
-            this.vx = 0; this.vy = 0;
-            this.speed = 6;
-            this.jumpForce = -14;
-            this.grounded = false;
-            this.dead = false;
-            this.facingRight = true;
-        }
-
-        update() {
-            if (this.dead) { this.y += 8; return; }
-
-            // 输入响应
-            if (INPUT.left) {
-                if (this.vx > -this.speed) this.vx--;
-                this.facingRight = false;
-            }
-            if (INPUT.right) {
-                if (this.vx < this.speed) this.vx++;
-                this.facingRight = true;
-            }
-            this.vx *= GAME.friction; // 摩擦力
-
-            // 跳跃逻辑
-            if (INPUT.jump && !INPUT.jumpPressed && this.grounded) {
-                this.vy = this.jumpForce;
-                this.grounded = false;
-                INPUT.jumpPressed = true;
-            }
-            if (!INPUT.jump) INPUT.jumpPressed = false;
-
-            // 物理移动
-            this.x += this.vx;
-            checkCollision(this, 'x'); // X轴碰撞
-            
-            this.vy += GAME.gravity;
-            this.y += this.vy;
-            this.grounded = false;
-            checkCollision(this, 'y'); // Y轴碰撞
-
-            // 掉落死亡
-            if (this.y > CANVAS_HEIGHT) die();
-        }
-
-        draw(ctx, camX) {
-            let dx = Math.floor(this.x - camX);
-            let dy = Math.floor(this.y);
-            
-            // 身体
-            ctx.fillStyle = '#e52521'; // 红
-            ctx.fillRect(dx, dy, this.w, this.h);
-            
-            // 背带裤
-            ctx.fillStyle = '#2233cc'; // 蓝
-            ctx.fillRect(dx + 5, dy + 15, 20, 15);
-
-            // 脸方向
-            ctx.fillStyle = '#ffcc99'; // 肤色
-            let faceX = this.facingRight ? dx + 15 : dx;
-            ctx.fillRect(faceX, dy + 5, 15, 10);
-        }
-    }
-
-    class Goomba { // 敌人
-        constructor(x, y) {
-            this.x = x; this.y = y;
-            this.w = 30; this.h = 30;
-            this.vx = -1.5; this.vy = 0;
-            this.dead = false;
-            this.deadTimer = 0;
-        }
-        update() {
-            if (this.dead) { this.deadTimer++; return; }
-            this.vy += GAME.gravity;
-            this.x += this.vx;
-            checkCollision(this, 'x', true); // 撞墙反弹
-            this.y += this.vy;
-            checkCollision(this, 'y');
-        }
-        draw(ctx, camX) {
-            if (this.deadTimer > 30) return;
-            let dx = Math.floor(this.x - camX);
-            let dy = Math.floor(this.y);
-            
-            if (this.dead) {
-                ctx.fillStyle = '#8b4513';
-                ctx.fillRect(dx, dy + 15, 30, 15); // 踩扁
-            } else {
-                ctx.fillStyle = '#8b4513'; // 棕色身体
-                ctx.beginPath();
-                ctx.moveTo(dx+5, dy+30); ctx.lineTo(dx+25, dy+30);
-                ctx.lineTo(dx+30, dy+10); ctx.lineTo(dx+15, dy); ctx.lineTo(dx, dy+10);
-                ctx.fill();
-                // 眼睛
-                ctx.fillStyle = 'white';
-                ctx.fillRect(dx+6, dy+10, 6, 6); ctx.fillRect(dx+18, dy+10, 6, 6);
-                ctx.fillStyle = 'black';
-                ctx.fillRect(dx+8, dy+12, 2, 2); ctx.fillRect(dx+20, dy+12, 2, 2);
-            }
-        }
-    }
-
-    class Coin {
-        constructor(x, y) {
-            this.x = x; this.y = y; this.w = 20; this.h = 28;
-            this.collected = false;
-        }
-        update() {
-            if (this.collected) return;
-            // 检测碰撞
-            if (rectIntersect(player.x, player.y, player.w, player.h, this.x, this.y, this.w, this.h)) {
-                this.collected = true;
-                GAME.coins++;
-                coinUi.innerText = GAME.coins;
-            }
-        }
-        draw(ctx, camX) {
-            if (this.collected) return;
-            let offset = Math.sin(GAME.frame * 0.1) * 3;
-            let dx = Math.floor(this.x - camX);
-            let dy = Math.floor(this.y + offset);
-            ctx.fillStyle = '#ffd700';
-            ctx.beginPath(); ctx.ellipse(dx+10, dy+14, 8, 12, 0, 0, Math.PI*2); ctx.fill();
-        }
-    }
-
-    // ================= 地图系统 =================
-    // 1=地面, 2=砖, 3=金币砖, g=敌人
-    const LEVEL_MAP = [
-        "                                                                                ",
-        "                                                                                ",
-        "                                                                                ",
-        "                                                                                ",
-        "      3                                                                         ",
-        "               222                                                              ",
-        "                                  3 3                                    2      ",
-        "          222            222     2   2                                  22      ",
-        "                       22       2     2                                222      ",
-        "     g               g           2   2          g                     2222      ",
-        "1111111111111111111111111111111111   111111111111111111111  11111111111111111111",
-        "1111111111111111111111111111111111   111111111111111111111  11111111111111111111"
-    ];
-
-    let player;
-    let blocks = [];
-    let enemies = [];
-    let coins = [];
-
-    function initLevel() {
-        blocks = []; enemies = []; coins = [];
-        
-        for (let r = 0; r < LEVEL_MAP.length; r++) {
-            for (let c = 0; c < LEVEL_MAP[r].length; c++) {
-                let char = LEVEL_MAP[r][c];
-                let x = c * TILE_SIZE;
-                let y = r * TILE_SIZE;
-                
-                if (char === '1') blocks.push({x, y, w: TILE_SIZE, h: TILE_SIZE, type: 'ground'});
-                else if (char === '2') blocks.push({x, y, w: TILE_SIZE, h: TILE_SIZE, type: 'brick'});
-                else if (char === '3') {
-                    blocks.push({x, y, w: TILE_SIZE, h: TILE_SIZE, type: 'brick'});
-                    coins.push(new Coin(x+10, y-40));
-                } else if (char === 'g') {
-                    enemies.push(new Goomba(x, y));
-                }
-            }
-        }
-        player = new Player();
-        GAME.coins = 0;
-        coinUi.innerText = "0";
-        GAME.cameraX = 0;
-    }
-
-    // ================= 物理引擎 =================
-    function rectIntersect(x1, y1, w1, h1, x2, y2, w2, h2) {
-        return x2 < x1 + w1 && x2 + w2 > x1 && y2 < y1 + h1 && y2 + h2 > y1;
-    }
-
-    function checkCollision(obj, axis, bounce = false) {
-        for (let b of blocks) {
-            if (rectIntersect(obj.x, obj.y, obj.w, obj.h, b.x, b.y, b.w, b.h)) {
-                if (axis === 'x') {
-                    if (obj.vx > 0) { obj.x = b.x - obj.w; if(bounce) obj.vx = -obj.vx; else obj.vx = 0; }
-                    else if (obj.vx < 0) { obj.x = b.x + b.w; if(bounce) obj.vx = -obj.vx; else obj.vx = 0; }
-                } else {
-                    if (obj.vy > 0) { obj.y = b.y - obj.h; obj.vy = 0; obj.grounded = true; }
-                    else if (obj.vy < 0) { obj.y = b.y + b.h; obj.vy = 0; }
-                }
-            }
-        }
-    }
-
-    function checkEnemyCollision() {
-        for (let e of enemies) {
-            if (e.dead) continue;
-            if (rectIntersect(player.x, player.y, player.w, player.h, e.x, e.y, e.w, e.h)) {
-                // 判定：下落时踩中
-                if (player.vy > 0 && player.y + player.h < e.y + e.h / 1.5) {
-                    e.dead = true;
-                    player.vy = -8; // 踩怪弹跳
-                    GAME.coins += 10;
-                    coinUi.innerText = GAME.coins;
-                } else {
-                    die();
-                }
-            }
-        }
-    }
-
-    function die() {
-        if (player.dead) return;
-        player.dead = true;
-        player.vy = -12; // 死亡弹起
-        setTimeout(() => {
-            GAME.gameOver = true;
-            GAME.running = false;
-            // 显示 Game Over
-            overlay.classList.remove('hidden');
-            document.querySelector('.mario-title').innerText = "GAME OVER";
-            document.querySelector('.mario-title').style.color = "red";
-            btnStart.innerText = "TRY AGAIN";
-        }, 1500);
-    }
-
-    // ================= 渲染循环 =================
-    function gameLoop() {
-        // ★ 安全检查：如果模块被卸载(DOM不存在)，停止循环 ★
-        if (!document.getElementById('mario-app')) return;
-
-        if (GAME.running) {
-            requestAnimationFrame(gameLoop);
-        } else if (player && player.dead) {
-            // 死亡动画继续播一会
-            requestAnimationFrame(gameLoop);
-        }
-
-        GAME.frame++;
-        
-        // 1. 逻辑更新
-        if (!GAME.gameOver) {
-            player.update();
-            enemies.forEach(e => e.update());
-            coins.forEach(c => c.update());
-            checkEnemyCollision();
-            
-            // 相机跟随 (玩家在屏幕左侧 1/3 处)
-            let targetCamX = player.x - 250;
-            targetCamX = Math.max(0, targetCamX); // 不小于0
-            GAME.cameraX += (targetCamX - GAME.cameraX) * 0.1; // 平滑移动
-        }
-
-        // 2. 绘制
-        ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-        
-        // 背景 (随相机移动产生视差效果，这里简化为固定)
-        ctx.fillStyle = '#5c94fc'; // 天空蓝
-        ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-        
-        // 地面装饰 (云)
-        ctx.fillStyle = 'rgba(255,255,255,0.3)';
-        ctx.fillRect(100 - GAME.cameraX * 0.5, 100, 100, 30);
-        ctx.fillRect(500 - GAME.cameraX * 0.5, 50, 150, 40);
-
-        // 场景物体 (视锥剔除：只画屏幕内的)
-        blocks.forEach(b => {
-            if (b.x - GAME.cameraX > -50 && b.x - GAME.cameraX < CANVAS_WIDTH) {
-                let dx = Math.floor(b.x - GAME.cameraX);
-                let dy = Math.floor(b.y);
-                if (b.type === 'ground') {
-                    ctx.fillStyle = '#009900';
-                    ctx.fillRect(dx, dy, b.w, b.h);
-                    ctx.fillStyle = '#007700'; // 细节纹理
-                    ctx.fillRect(dx, dy, b.w, 4);
-                } else {
-                    ctx.fillStyle = '#b74b16';
-                    ctx.fillRect(dx, dy, b.w, b.h);
-                    ctx.strokeStyle = '#000';
-                    ctx.strokeRect(dx, dy, b.w, b.h);
-                }
-            }
-        });
-
-        coins.forEach(c => c.draw(ctx, GAME.cameraX));
-        enemies.forEach(e => e.draw(ctx, GAME.cameraX));
-        player.draw(ctx, GAME.cameraX);
-    }
-
-    // 启动逻辑
-    btnStart.onclick = () => {
-        overlay.classList.add('hidden');
-        initLevel();
-        GAME.running = true;
-        GAME.frame = 0;
-        gameLoop();
-    };
-
-    // ================= 手势识别 (核心) =================
+    // ================= 1. 游戏适配配置 =================
+    // 你的游戏路径 (相对于当前 modules 文件夹)
+    // 实际请求路径: 你的域名/modules/FullScreenMario/index.html
+    const GAME_URL = "./modules/FullScreenMario/index.html"; 
     
-    // 初始化 MediaPipe Hands
-    const hands = new Hands({locateFile: (file) => {
-        return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
-    }});
-    hands.setOptions({
-        maxNumHands: 1,
-        modelComplexity: 1,
-        minDetectionConfidence: 0.5,
-        minTrackingConfidence: 0.5
-    });
+    // FullScreenMario 常用键位码
+    // Left: 37, Up: 38, Right: 39, Down: 40
+    // Shift: 16 (加速/开火), Space: 32 (跳/暂停)
+    const KEY_CODES = {
+        LEFT: 37,
+        RIGHT: 39,
+        UP: 38,
+        SPACE: 32,
+        SHIFT: 16
+    };
 
-    hands.onResults(onResults);
+    // ================= 2. 状态管理 =================
+    const elements = {
+        wrapper: document.getElementById('mario-wrapper'),
+        iframe: document.getElementById('game-iframe'),
+        video: document.getElementById('input-video'),
+        canvas: document.getElementById('debug-canvas'),
+        ctx: document.getElementById('debug-canvas').getContext('2d'),
+        ui: {
+            left: document.getElementById('st-left'),
+            right: document.getElementById('st-right'),
+            run: document.getElementById('st-run'),
+            jump: document.getElementById('st-jump')
+        }
+    };
 
-    // 摄像头工具
-    const cameraUtils = new Camera(videoElement, {
-        onFrame: async () => { 
-            // ★ 安全检查：如果模块被卸载，停止发送帧 ★
-            if (!document.getElementById('mario-app')) {
-                cameraUtils.stop(); 
-                return;
-            }
-            await hands.send({image: videoElement}); 
-        },
-        width: 320, height: 240
-    });
-    cameraUtils.start();
+    // 记录按键状态，防止重复触发 keydown
+    const keyState = { 
+        left: false, 
+        right: false, 
+        run: false, 
+        jump: false 
+    };
 
-    // 手势回调
+    // ================= 3. 核心：按键注入引擎 =================
+    // 兼容老游戏：同时发送标准的 KeyboardEvent 和旧式的 keyCode
+    function triggerKey(action, isActive) {
+        // 状态去重：如果状态没变，就不重复发送 (除了 Jump 可能需要连发，但一般通过长按处理)
+        if (keyState[action] === isActive) return;
+        keyState[action] = isActive;
+
+        // UI 反馈
+        if(elements.ui[action]) {
+            isActive ? elements.ui[action].classList.add('active') : elements.ui[action].classList.remove('active');
+        }
+
+        // 获取目标 Window
+        const gameWin = elements.iframe.contentWindow;
+        if (!gameWin) return;
+
+        // 映射动作到具体的键码列表 (支持一个动作触发多个键，比如跳跃同时按 Space 和 Up)
+        let codes = [];
+        if (action === 'left') codes = [KEY_CODES.LEFT];
+        if (action === 'right') codes = [KEY_CODES.RIGHT];
+        if (action === 'run') codes = [KEY_CODES.SHIFT];
+        if (action === 'jump') codes = [KEY_CODES.UP, KEY_CODES.SPACE]; // 双保险
+
+        const eventType = isActive ? 'keydown' : 'keyup';
+
+        codes.forEach(code => {
+            // 构造事件：FullScreenMario 这种老游戏非常依赖 keyCode 和 which
+            const evt = new KeyboardEvent(eventType, {
+                bubbles: true,
+                cancelable: true,
+                view: gameWin,
+                keyCode: code, // 关键：旧标准
+                which: code,   // 关键：旧标准
+                code: getCodeName(code) // 新标准 (ArrowLeft 等)
+            });
+
+            // 暴力派发：发给 document 和 window，确保游戏引擎能收到
+            // 很多 Canvas 游戏监听的是 window
+            gameWin.document.dispatchEvent(evt);
+            gameWin.dispatchEvent(evt);
+            // 尝试发给 body
+            if(gameWin.document.body) gameWin.document.body.dispatchEvent(evt);
+        });
+    }
+
+    // 辅助：KeyCode 转 Code 字符串 (现代浏览器需要)
+    function getCodeName(keyCode) {
+        if(keyCode === 37) return 'ArrowLeft';
+        if(keyCode === 38) return 'ArrowUp';
+        if(keyCode === 39) return 'ArrowRight';
+        if(keyCode === 40) return 'ArrowDown';
+        if(keyCode === 32) return 'Space';
+        if(keyCode === 16) return 'ShiftLeft';
+        return '';
+    }
+
+    // ================= 4. 手势识别逻辑 =================
+    
     function onResults(results) {
-        if (!document.getElementById('mario-app')) return;
+        if (!document.getElementById('mario-wrapper')) return; // 防内存泄漏
 
-        handCtx.save();
-        handCtx.clearRect(0, 0, handCanvas.width, handCanvas.height);
-        
-        // 绘制摄像头原图
-        handCtx.drawImage(results.image, 0, 0, handCanvas.width, handCanvas.height);
+        // 绘制 Debug 画面
+        const ctx = elements.ctx;
+        const width = elements.canvas.width;
+        const height = elements.canvas.height;
+
+        ctx.save();
+        ctx.clearRect(0, 0, width, height);
+        ctx.drawImage(results.image, 0, 0, width, height);
 
         if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
             const landmarks = results.multiHandLandmarks[0];
-            
-            // 绘制骨架
-            drawConnectors(handCtx, landmarks, HAND_CONNECTIONS, {color: '#00FF00', lineWidth: 2});
-            drawLandmarks(handCtx, landmarks, {color: '#FF0000', lineWidth: 1, radius: 2});
+            drawConnectors(ctx, landmarks, HAND_CONNECTIONS, {color: '#00FF00', lineWidth: 2});
+            drawLandmarks(ctx, landmarks, {color: '#FF0000', lineWidth: 1, radius: 2});
 
-            // --- 核心控制算法 ---
+            // --- 逻辑判断 ---
             
-            // 1. 移动控制 (Tilt): 比较 [0]手腕 和 [9]中指根 的X坐标
-            // 镜像后：手向右歪 -> [9].x < [0].x -> 认为是 Left (因为镜像)
-            // 实际上为了直观：手向那边歪，人就往那边跑
+            // 1. 移动 (手腕倾斜)
+            // 比较 [0]手腕 和 [9]中指根 的 X 坐标
             const wrist = landmarks[0];
             const middleBase = landmarks[9];
             const tiltX = middleBase.x - wrist.x; 
-            const TILT_THRESHOLD = 0.04; // 灵敏度阈值
+            const TILT_THRES = 0.04; // 阈值
 
-            // 绘制中轴辅助线
-            handCtx.strokeStyle = "yellow";
-            handCtx.beginPath();
-            handCtx.moveTo(wrist.x * handCanvas.width, wrist.y * handCanvas.height);
-            handCtx.lineTo(wrist.x * handCanvas.width, (wrist.y - 0.2) * handCanvas.height);
-            handCtx.stroke();
-
-            if (tiltX < -TILT_THRESHOLD) {
-                // 屏幕上看起来是向右歪 (镜像后) -> 往右跑
-                INPUT.right = true; 
-                INPUT.left = false;
-                drawHint(">> RIGHT", handCanvas.width - 60);
-            } else if (tiltX > TILT_THRESHOLD) {
-                // 屏幕上看起来是向左歪 -> 往左跑
-                INPUT.left = true;
-                INPUT.right = false;
-                drawHint("LEFT <<", 10);
+            // 镜像画面：画面中手向右歪 (tiltX > 0) -> 实际上是向左跑
+            // 但用户体验是：看着屏幕，手往哪边歪，人往哪边跑
+            // 屏幕右边是 x 增大。
+            // 镜像翻转了 scaleX(-1)，所以：
+            // 真实右手向右歪 -> 摄像头画面手向左 -> landmarks x 减小 (相比 wrist)
+            // 我们直接看数值：
+            
+            if (tiltX < -TILT_THRES) { 
+                // 手向屏幕右侧倾斜 (Right)
+                triggerKey('right', true);
+                triggerKey('left', false);
+            } else if (tiltX > TILT_THRES) {
+                // 手向屏幕左侧倾斜 (Left)
+                triggerKey('left', true);
+                triggerKey('right', false);
             } else {
-                INPUT.left = false;
-                INPUT.right = false;
+                triggerKey('left', false);
+                triggerKey('right', false);
             }
 
-            // 2. 跳跃控制 (Pinch): [4]拇指尖 和 [8]食指尖 的距离
-            const thumb = landmarks[4];
-            const index = landmarks[8];
-            const dist = Math.hypot(thumb.x - index.x, thumb.y - index.y);
+            // 2. 加速 (握拳)
+            // 简单判断：指尖是否都在指根下方 (y坐标更大，因为y向下是正)
+            // 或者判断指尖与手腕的距离
+            const isFist = (
+                landmarks[8].y > landmarks[5].y && // 食指
+                landmarks[12].y > landmarks[9].y && // 中指
+                landmarks[16].y > landmarks[13].y    // 无名指
+            );
             
-            if (dist < 0.05) { // 捏合阈值
-                INPUT.jump = true;
-                handCtx.fillStyle = "cyan";
-                handCtx.font = "bold 24px Arial";
-                handCtx.fillText("JUMP!", handCanvas.width/2 - 30, handCanvas.height - 20);
-                
-                // 画个圈提示
-                handCtx.strokeStyle = "cyan";
-                handCtx.lineWidth = 3;
-                handCtx.beginPath();
-                handCtx.arc(thumb.x * handCanvas.width, thumb.y * handCanvas.height, 20, 0, Math.PI*2);
-                handCtx.stroke();
+            if (isFist) {
+                triggerKey('run', true);
             } else {
-                INPUT.jump = false;
+                triggerKey('run', false);
+            }
+
+            // 3. 跳跃 (捏合)
+            // 拇指[4] 和 食指[8]
+            const dJump = Math.hypot(landmarks[4].x - landmarks[8].x, landmarks[4].y - landmarks[8].y);
+            if (dJump < 0.05) {
+                triggerKey('jump', true);
+            } else {
+                triggerKey('jump', false);
             }
 
         } else {
-            // 没手时停止输入
-            INPUT.left = false; INPUT.right = false; INPUT.jump = false;
+            // 无手势，释放所有键
+            triggerKey('left', false);
+            triggerKey('right', false);
+            triggerKey('run', false);
+            triggerKey('jump', false);
         }
-        handCtx.restore();
+        ctx.restore();
     }
 
-    function drawHint(text, x) {
-        handCtx.fillStyle = "yellow";
-        handCtx.font = "bold 16px Arial";
-        handCtx.fillText(text, x, 50);
-    }
+    // ================= 5. 初始化流程 =================
+    
+    document.getElementById('btn-inject-game').onclick = () => {
+        // 1. 隐藏遮罩
+        document.getElementById('loading-mask').style.display = 'none';
+        
+        // 2. 加载游戏
+        // 为了防止缓存和确保加载，加个时间戳
+        elements.iframe.src = GAME_URL;
+        
+        // 3. 聚焦 (关键！)
+        elements.iframe.onload = () => {
+            console.log("Mario Loaded. Focusing...");
+            elements.iframe.contentWindow.focus();
+            
+            // 尝试模拟一次点击，激活音频上下文
+            const clickEvt = new MouseEvent('click', {
+                view: elements.iframe.contentWindow,
+                bubbles: true,
+                cancelable: true
+            });
+            elements.iframe.contentDocument.body.dispatchEvent(clickEvt);
+        };
+
+        // 4. 启动 AI
+        const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+        hands.onResults(onResults);
+
+        const cameraUtils = new Camera(elements.video, {
+            onFrame: async () => { 
+                if (!document.getElementById('mario-wrapper')) return; 
+                await hands.send({image: elements.video}); 
+            },
+            width: 320, height: 240
+        });
+        cameraUtils.start();
+    };
 
 })();
 </script>
