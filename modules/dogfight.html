@@ -3,7 +3,7 @@
     #game-container {
         position: relative; width: 100%; height: 600px;
         background: #000; border-radius: 12px; overflow: hidden;
-        border: 2px solid #333;
+        border: 2px solid #333; /* 扁平边框，无阴影 */
         font-family: "Segoe UI", sans-serif;
         cursor: none; user-select: none;
     }
@@ -17,16 +17,25 @@
         padding: 20px; box-sizing: border-box; z-index: 10;
     }
 
+    /* 状态指示器 (加载中...) */
+    .status-pill {
+        position: absolute; top: 20px; left: 20px;
+        display: inline-block; padding: 6px 12px;
+        background: rgba(0, 255, 255, 0.2); 
+        border: 1px solid rgba(0, 255, 255, 0.5);
+        border-radius: 4px; backdrop-filter: blur(5px);
+        font-size: 12px; color: #00ffff;
+        pointer-events: auto;
+    }
+
     /* HUD */
     .hud-bar {
-        display: flex; justify-content: space-between; align-items: flex-start;
+        display: flex; justify-content: flex-end; align-items: flex-start;
         text-shadow: 0 2px 4px rgba(0,0,0,0.8);
-        font-family: 'Courier New', Courier, monospace;
+        font-family: 'Courier New', Courier, monospace; gap: 20px;
     }
     .score-box { font-size: 28px; color: #ffcc00; font-weight: bold; }
-    .hp-group { display: flex; flex-direction: column; align-items: flex-end; }
-    .hp-label { color: #00ff00; font-size: 14px; margin-bottom: 4px; font-weight: bold;}
-    .hp-bar-bg { width: 200px; height: 16px; background: rgba(50,50,50,0.8); border: 1px solid #666; }
+    .hp-bar-bg { width: 200px; height: 12px; background: rgba(50,50,50,0.8); border: 1px solid #666; margin-top: 8px;}
     .hp-bar-fill { width: 100%; height: 100%; background: linear-gradient(90deg, #00ff00, #adff2f); transition: width 0.1s; }
 
     /* 菜单屏幕 */
@@ -39,17 +48,13 @@
     }
     .center-screen.active { display: block; animation: fadeIn 0.3s; }
     
-    .title { 
-        font-size: 56px; color: #00ffff; font-weight: 900; 
-        text-shadow: 4px 4px 0px #ff0055; margin-bottom: 30px;
-        font-family: 'Impact', sans-serif; letter-spacing: 2px;
-    }
+    .title { font-size: 56px; color: #00ffff; font-weight: 900; letter-spacing: 4px; margin-bottom: 30px; text-shadow: 4px 4px 0px #ff0055; }
     .btn {
         background: linear-gradient(180deg, #ffcc00, #ffaa00); 
         color: #000; border: none; padding: 15px 40px;
         font-size: 20px; font-weight: bold; border-radius: 4px; cursor: pointer;
         transition: transform 0.1s; display: inline-block;
-        box-shadow: 0 4px 0 #b37700;
+        box-shadow: 0 4px 0 #b37700; margin-top: 20px;
     }
     .btn:active { transform: translateY(4px); box-shadow: none; }
 
@@ -63,22 +68,22 @@
     }
     #pause-overlay.visible { opacity: 1; }
 
-    /* ★★★ 摄像头小窗 (修复版) ★★★ */
+    /* ★★★ 摄像头小窗 (和圣诞树一样的稳健配置) ★★★ */
     .cam-box {
         position: absolute; bottom: 20px; right: 20px;
-        width: 160px; height: 120px; 
+        width: 140px; height: 105px; 
         border-radius: 8px; overflow: hidden;
-        border: 2px solid #00ff00; 
-        z-index: 9999; /* 确保最高层级 */
+        border: 2px solid rgba(255,255,255,0.3); 
+        z-index: 999; /* 最顶层 */
         background: #000;
-        box-shadow: 0 0 15px rgba(0, 255, 0, 0.3);
-        transform: scaleX(-1); /* 镜像翻转 */
+        transform: scaleX(-1);
     }
     
-    /* ★ 关键修复：不要用 display: none，而是透明 ★ */
+    /* ★ 关键修复：不能用 display:none，必须用 opacity:0 ★ */
     #input-video { 
-        position: absolute; width: 1px; height: 1px; 
-        opacity: 0; pointer-events: none; 
+        position: absolute; top: 0; left: 0;
+        width: 1px; height: 1px; opacity: 0; 
+        pointer-events: none; 
     }
     #output-canvas { width: 100%; height: 100%; display: block; }
 
@@ -89,10 +94,12 @@
     <canvas id="main-canvas"></canvas>
 
     <div class="ui-overlay">
+        <div id="status-text" class="status-pill">系统启动中...</div>
+
         <div class="hud-bar">
             <div class="score-box"><span style="font-size:14px;color:#aaa">SCORE</span> <span id="ui-score">000000</span></div>
-            <div class="hp-group">
-                <div class="hp-label">SHIELD</div>
+            <div style="text-align: right;">
+                <div style="font-size:12px; color:#0f0; margin-bottom:2px;">SHIELD</div>
                 <div class="hp-bar-bg"><div id="ui-hp" class="hp-bar-fill"></div></div>
             </div>
         </div>
@@ -102,17 +109,16 @@
 
     <div id="start-screen" class="center-screen active">
         <div class="title">NEO RAIDEN</div>
-        <div style="color:#ccc; margin-bottom:30px; font-size:16px; line-height:1.8;">
-            🖐️ <span style="color:#fff">张开手掌</span> 移动战机<br>
-            ⚠️ 躲避 <span style="color:#ff3333">红色弹幕</span><br>
-            🚀 击落敌机获取高分
+        <div style="color:#ccc; font-size:16px; line-height:1.8;">
+            🖐️ 张手移动 | ✊ 握拳大招 (未实装)<br>
+            躲避红色弹幕 · 击坠紫色母舰
         </div>
-        <button class="btn" onclick="game.start()">LAUNCH</button>
+        <button class="btn" onclick="game.start()">LAUNCH MISSION</button>
     </div>
 
     <div id="gameover-screen" class="center-screen">
         <div class="title" style="color:#ff3333; text-shadow:none;">DEFEATED</div>
-        <div style="font-size:18px; color:#fff; margin-bottom:30px;">
+        <div style="font-size:18px; color:#fff; margin-bottom:20px;">
             FINAL SCORE: <span id="final-score" style="color:#ffcc00; font-size:32px;">0</span><br>
             KILLS: <span id="final-kills">0</span>
         </div>
@@ -123,17 +129,19 @@
     <video id="input-video" playsinline></video>
 </div>
 
+<script src="js/camera_utils.js"></script>
 <script src="js/control_utils.js"></script>
 <script src="js/drawing_utils.js"></script>
 <script src="js/hands.js"></script>
 
 <script>
 /**
- * Neo Raiden Engine
+ * Neo Raiden Engine (Fixed Camera Version)
  */
 const canvas = document.getElementById('main-canvas');
 const ctx = canvas.getContext('2d');
 const container = document.getElementById('game-container');
+const statusText = document.getElementById('status-text');
 
 function resize() {
     canvas.width = container.clientWidth;
@@ -228,7 +236,7 @@ class Game {
         this.state = 'PLAYING';
         document.getElementById('start-screen').classList.remove('active');
         document.getElementById('gameover-screen').classList.remove('active');
-        gameLoop();
+        loop();
     }
 
     restart() { this.start(); }
@@ -367,6 +375,7 @@ class Game {
     playerDamage(dmg) {
         this.player.hp -= dmg;
         this.createExplosion(this.player.x, this.player.y, 10, '#ffaa00');
+        // 震屏
         canvas.style.transform = `translate(${Math.random()*10-5}px, ${Math.random()*10-5}px)`;
         setTimeout(() => canvas.style.transform = 'none', 50);
         this.updateUI();
@@ -435,7 +444,7 @@ class Game {
             
             this.enemies.forEach(e => {
                 ctx.drawImage(e.img, e.x - e.w/2, e.y - e.h/2, e.w, e.h);
-                if(e.maxHp > 5) {
+                if(e.maxHp > 5) { // Boss血条
                     ctx.fillStyle = 'red'; ctx.fillRect(e.x - 20, e.y - e.h/2 - 10, 40, 4);
                     ctx.fillStyle = '#0f0'; ctx.fillRect(e.x - 20, e.y - e.h/2 - 10, 40 * (e.hp/e.maxHp), 4);
                 }
@@ -452,58 +461,41 @@ class Game {
 
 const game = new Game();
 
-function gameLoop() {
+function loop() {
     game.update();
     game.draw();
-    if(game.state === 'PLAYING') requestAnimationFrame(gameLoop);
+    if(game.state === 'PLAYING') requestAnimationFrame(loop);
 }
 
-// ================= 3. ★ 原生摄像头启动逻辑 (修复黑屏) ★ =================
+// ================= 3. MediaPipe (圣诞树同款配置) =================
 const videoElement = document.getElementById('input-video');
 const canvasElement = document.getElementById('output-canvas');
 const canvasCtx = canvasElement.getContext('2d');
 
-async function startCamera() {
-    try {
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-            video: { width: 320, height: 240 } 
-        });
-        videoElement.srcObject = stream;
-        videoElement.onloadedmetadata = () => {
-            videoElement.play();
-            processVideo();
-        };
-    } catch (err) {
-        console.error("Camera Error:", err);
-        alert("摄像头启动失败，请检查权限");
-    }
-}
-
-async function processVideo() {
-    await hands.send({image: videoElement});
-    requestAnimationFrame(processVideo);
-}
-
 function onResults(results) {
-    // 绘制小窗预览
+    if(statusText.innerText.includes("启动")) {
+        statusText.innerText = "系统就绪：请展示手掌";
+        statusText.style.color = "#00ff00";
+        statusText.style.borderColor = "#00ff00";
+    }
+
     canvasCtx.save();
     canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
     canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
-    
+
     if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
         const landmarks = results.multiHandLandmarks[0];
         
-        // 绘制骨架
         drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: '#00FF00', lineWidth: 2});
         drawLandmarks(canvasCtx, landmarks, {color: '#FF0000', lineWidth: 1, radius: 2});
 
-        // 核心：控制映射
         const cx = landmarks[9].x; 
         const cy = landmarks[9].y;
         
         game.handTarget.x = (1 - cx) * canvas.width;
         game.handTarget.y = cy * canvas.height;
         game.hasHand = true;
+
     } else {
         game.hasHand = false;
     }
@@ -514,7 +506,13 @@ const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@me
 hands.setOptions({maxNumHands: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5});
 hands.onResults(onResults);
 
-// 启动！
-startCamera();
+const cameraUtils = new Camera(videoElement, {
+    onFrame: async () => { await hands.send({image: videoElement}); },
+    width: 320, height: 240
+});
+cameraUtils.start().catch(err => {
+    statusText.innerText = "❌ 摄像头启动失败";
+    statusText.style.background = "red";
+});
 
 </script>
