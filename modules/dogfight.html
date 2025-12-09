@@ -1,29 +1,43 @@
 <style>
-    /* === 游戏容器与基础层 === */
+    /* === 游戏容器 === */
     #drone-container {
         position: relative; width: 100%; height: 600px;
-        background: #111; border-radius: 12px; overflow: hidden;
-        box-shadow: 0 10px 40px rgba(0,0,0,0.8);
-        font-family: 'Courier New', Courier, monospace; /* 复古字体 */
+        background: #111; 
+        border-radius: 12px; overflow: hidden;
+        /* 去除阴影，改为极细边框融入背景 */
+        border: 1px solid #333; 
+        font-family: 'Courier New', Courier, monospace;
         user-select: none;
     }
+    /* 游戏画布 */
     #game-canvas { width: 100%; height: 100%; display: block; position: absolute; z-index: 1; }
     
-    /* === UI 覆盖层 (菜单/HUD) === */
+    /* === UI 覆盖层 === */
     .ui-layer {
         position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-        z-index: 10; pointer-events: none;
+        z-index: 10; pointer-events: none; /* 鼠标穿透 */
         display: flex; flex-direction: column;
         text-shadow: 2px 2px 0px #000;
     }
     
-    /* 通用按钮/选项样式 */
+    /* 状态胶囊 (显示加载进度) */
+    .status-pill {
+        position: absolute; top: 20px; left: 20px;
+        display: inline-block; padding: 8px 16px;
+        background: rgba(0, 100, 255, 0.3); 
+        border: 1px solid rgba(100, 200, 255, 0.5);
+        border-radius: 30px; backdrop-filter: blur(5px);
+        font-size: 14px; color: #00ffff;
+        pointer-events: auto;
+    }
+
+    /* 菜单项 */
     .menu-item {
-        background: rgba(0,0,0,0.6); color: #fff;
+        background: rgba(0,0,0,0.7); color: #fff;
         padding: 15px 30px; margin: 10px; border: 2px solid #555;
         font-size: 24px; font-weight: bold; width: 300px; text-align: center;
         transform: skewX(-10deg); transition: all 0.2s;
-        opacity: 0.7;
+        opacity: 0.8;
     }
     .menu-item.active {
         background: #ffcc00; color: #000; border-color: #fff;
@@ -31,29 +45,27 @@
         box-shadow: 0 0 15px #ffcc00;
     }
 
-    /* 各个界面容器 */
+    /* 界面容器 */
     #screen-start, #screen-shop, #screen-upgrade, #screen-gameover {
         position: absolute; width: 100%; height: 100%;
         background: rgba(0,0,0,0.85);
         display: flex; flex-direction: column;
         align-items: center; justify-content: center;
         transition: opacity 0.3s;
+        pointer-events: auto; /* 允许点击 */
     }
-    .hidden { opacity: 0; pointer-events: none; display: none !important; }
+    .hidden { opacity: 0; pointer-events: none !important; display: none !important; }
 
-    /* 标题 */
     h1.game-title {
         font-size: 60px; color: #00ddee; 
-        text-transform: uppercase; letter-spacing: 5px;
-        margin-bottom: 50px;
+        text-transform: uppercase; letter-spacing: 5px; margin-bottom: 50px;
         text-shadow: 4px 4px 0 #ff00de;
     }
 
-    /* 商店/升级 列表 */
+    /* 列表 */
     .grid-panel {
         display: grid; grid-template-columns: 1fr 1fr; gap: 20px;
-        max-width: 800px; max-height: 400px; overflow-y: auto;
-        padding: 20px;
+        max-width: 800px; max-height: 400px; overflow-y: auto; padding: 20px;
     }
     .shop-card {
         background: #222; border: 2px solid #444; padding: 15px;
@@ -61,11 +73,10 @@
         color: #ddd; font-size: 14px;
     }
     .shop-card.owned { border-color: #00ff00; color: #88ff88; }
-    .shop-card.active { border-color: #ffcc00; background: #333; }
     
-    /* 游戏内 HUD */
+    /* HUD */
     #hud-layer {
-        position: absolute; top: 0; left: 0; width: 100%; padding: 20px;
+        position: absolute; top: 0; left: 0; width: 100%; padding: 20px 80px; /* 避开左上角状态条 */
         display: flex; justify-content: space-between;
         font-size: 20px; color: #fff; font-weight: bold;
     }
@@ -77,13 +88,15 @@
         backdrop-filter: blur(5px);
     }
 
-    /* 摄像头小窗 */
+    /* === 摄像头小窗 (修复层级) === */
     .cam-box {
-        position: absolute; bottom: 10px; right: 10px;
-        width: 120px; height: 90px; border: 2px solid #444; 
-        z-index: 20; background: #000; overflow: hidden; opacity: 0.6;
+        position: absolute; bottom: 20px; right: 20px;
+        width: 120px; height: 90px; border-radius: 8px; overflow: hidden;
+        border: 2px solid rgba(255,255,255,0.5); 
+        z-index: 999; /* ★ 确保在最上层 */
+        background: #000;
     }
-    #input-video { position: absolute; opacity: 0; pointer-events: none; }
+    #input-video { display: none; }
     #output-canvas { width: 100%; height: 100%; transform: scaleX(-1); }
 </style>
 
@@ -91,32 +104,31 @@
     <div id="game-canvas"></div>
 
     <div class="ui-layer">
-        
+        <div id="status-text" class="status-pill">正在初始化空战系统...</div>
+
         <div id="screen-start">
             <h1 class="game-title">SKY FORCE</h1>
             <div class="menu-item active" id="btn-start">开始出击</div>
             <div class="menu-item" id="btn-shop">军火商店</div>
             <div class="menu-item" id="btn-upgrade">机体改造</div>
             <div style="margin-top:40px; color:#aaa; font-size:12px;">
-                🖐️ 张手摇杆选择 | ✊ 握拳确认进入
+                🖐️ 张手上下移动选择 | ✊ 握拳确认
             </div>
         </div>
 
         <div id="screen-shop" class="hidden">
             <h2>军火商店 (金币: <span class="gold-display">0</span>)</h2>
-            <div class="grid-panel" id="shop-list">
-                </div>
+            <div class="grid-panel" id="shop-list"></div>
             <div class="menu-item active" style="margin-top:auto">返回主页</div>
         </div>
 
         <div id="screen-upgrade" class="hidden">
             <h2>机体改造</h2>
-            <div class="grid-panel" id="upgrade-list">
-                </div>
+            <div class="grid-panel" id="upgrade-list"></div>
             <div class="menu-item active" style="margin-top:auto">返回主页</div>
         </div>
 
-        <div id="screen-hud" class="hidden" style="pointer-events: none;">
+        <div id="screen-hud" class="hidden">
             <div id="hud-layer">
                 <div>HP: <span id="hud-hp" style="color:#0f0">100%</span></div>
                 <div>SCORE: <span id="hud-score">0</span></div>
@@ -128,8 +140,7 @@
         <div id="screen-gameover" class="hidden">
             <h1 style="color:red; font-size:50px;">MISSION FAILED</h1>
             <div style="font-size:20px; color:#fff; margin:20px;">
-                存活时间: <span id="res-time">0</span>s<br>
-                获得金币: <span id="res-gold">0</span>
+                存活: <span id="res-time">0</span>s | 金币: <span id="res-gold">0</span>
             </div>
             <div class="menu-item active">返回基地</div>
         </div>
@@ -146,22 +157,16 @@
 <script src="js/hands.js"></script>
 
 <script>
-    // ================= 0. 全局数据与存档 =================
+console.log(">>> [SkyForce] 启动中...");
+
+try {
+    // ================= 0. 全局存档 =================
     const GAME_DATA = {
         gold: 0,
-        unlocked: ['skin_default', 'w_normal'], // 已解锁ID
-        equipped: {
-            skin: 'skin_default',
-            weapon: 'w_normal',
-            armors: []
-        },
-        upgrades: {
-            fireRate: 1, // 射速等级
-            bulletCount: 1 // 子弹数量等级
-        }
+        unlocked: ['skin_default', 'w_normal'], 
+        equipped: { skin: 'skin_default', weapon: 'w_normal', armors: [] },
+        upgrades: { fireRate: 1, bulletCount: 1 }
     };
-
-    // 读取存档
     const saveStr = localStorage.getItem('skyforce_save');
     if(saveStr) Object.assign(GAME_DATA, JSON.parse(saveStr));
 
@@ -169,30 +174,31 @@
         localStorage.setItem('skyforce_save', JSON.stringify(GAME_DATA));
         document.querySelectorAll('.gold-display').forEach(e => e.innerText = GAME_DATA.gold);
     }
-    saveGame(); // 初始化显示
+    saveGame();
 
-    // 配置表
     const CONFIG = {
         shop: [
-            { id: 'w_laser', name: '贯穿激光', price: 500, type: 'weapon' },
-            { id: 'w_scatter', name: '散射炮', price: 800, type: 'weapon' },
-            { id: 'a_magnet', name: '磁力装甲 (吸金币)', price: 300, type: 'armor' },
-            { id: 'a_shield', name: '强力护盾 (+2HP)', price: 400, type: 'armor' }
+            { id: 'w_laser', name: '激光炮', price: 500 },
+            { id: 'w_scatter', name: '散射炮', price: 800 },
+            { id: 'a_magnet', name: '磁力装甲', price: 300 },
+            { id: 'a_shield', name: '强力护盾', price: 400 }
         ],
         upgrades: [
-            { id: 'u_speed', name: '射速强化', basePrice: 100, level: () => GAME_DATA.upgrades.fireRate },
-            { id: 'u_count', name: '弹舱扩容', basePrice: 200, level: () => GAME_DATA.upgrades.bulletCount }
+            { id: 'u_speed', name: '射速强化', basePrice: 100 },
+            { id: 'u_count', name: '弹舱扩容', basePrice: 200 }
         ]
     };
 
-    // ================= 1. 引擎初始化 (Three.js) =================
+    // ================= 1. 引擎初始化 =================
     const container = document.getElementById('drone-container');
-    const width = container.clientWidth;
-    const height = container.clientHeight;
+    const statusText = document.getElementById('status-text');
+    
+    if(!container) throw new Error("容器缺失");
+    
+    let width = container.clientWidth || 800;
+    let height = container.clientHeight || 600;
 
     const scene = new THREE.Scene();
-    // 2D 游戏使用正交相机 (Left, Right, Top, Bottom, Near, Far)
-    // 坐标系：中心(0,0)，宽width，高height
     const camera = new THREE.OrthographicCamera(-width/2, width/2, height/2, -height/2, 1, 1000);
     camera.position.z = 100;
 
@@ -200,38 +206,38 @@
     renderer.setSize(width, height);
     document.getElementById('game-canvas').appendChild(renderer.domElement);
 
-    // 星空背景 (Canvas绘制)
+    // 星空背景
     function createStarBg() {
         const cvs = document.createElement('canvas');
         cvs.width = 512; cvs.height = 512;
         const ctx = cvs.getContext('2d');
-        ctx.fillStyle = '#000022'; ctx.fillRect(0,0,512,512);
-        ctx.fillStyle = '#fff';
-        for(let i=0; i<100; i++) {
+        ctx.fillStyle = '#000011'; ctx.fillRect(0,0,512,512);
+        ctx.fillStyle = '#ffffff';
+        for(let i=0; i<150; i++) {
+            const s = Math.random();
             ctx.globalAlpha = Math.random();
-            ctx.fillRect(Math.random()*512, Math.random()*512, 2, 2);
+            ctx.fillRect(Math.random()*512, Math.random()*512, s*2, s*2);
         }
         const tex = new THREE.CanvasTexture(cvs);
         tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
         return tex;
     }
     const bgTex = createStarBg();
-    const bgMat = new THREE.MeshBasicMaterial({ map: bgTex });
-    const bgMesh = new THREE.Mesh(new THREE.PlaneGeometry(width, height*2), bgMat);
+    const bgMesh = new THREE.Mesh(new THREE.PlaneGeometry(width, height*2), new THREE.MeshBasicMaterial({ map: bgTex }));
     bgMesh.position.z = -10;
     scene.add(bgMesh);
 
-    // ================= 2. 游戏实体类 =================
-    
-    // 纹理生成工厂
+    // ================= 2. 纹理工厂 (本地生成) =================
     const TextureFactory = {
         player: (color) => {
             const cvs = document.createElement('canvas'); cvs.width=64; cvs.height=64;
             const ctx = cvs.getContext('2d');
-            ctx.fillStyle = color;
-            ctx.beginPath(); ctx.moveTo(32,0); ctx.lineTo(64,64); ctx.lineTo(32,48); ctx.lineTo(0,64); ctx.fill();
-            // 驾驶舱
-            ctx.fillStyle = '#00ffff'; ctx.beginPath(); ctx.arc(32, 35, 5, 0, Math.PI*2); ctx.fill();
+            // 机翼
+            ctx.fillStyle = '#888'; ctx.beginPath(); ctx.moveTo(32,10); ctx.lineTo(60,50); ctx.lineTo(4,50); ctx.fill();
+            // 机身
+            ctx.fillStyle = color; ctx.beginPath(); ctx.moveTo(32,0); ctx.lineTo(40,55); ctx.lineTo(24,55); ctx.fill();
+            // 喷口
+            ctx.fillStyle = '#00ffff'; ctx.beginPath(); ctx.arc(32, 45, 4, 0, Math.PI*2); ctx.fill();
             return new THREE.CanvasTexture(cvs);
         },
         enemy: (type) => {
@@ -239,25 +245,26 @@
             const ctx = cvs.getContext('2d');
             if(type==='basic') {
                 ctx.fillStyle = '#ff4444'; // 红色敌机
-                ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(64,0); ctx.lineTo(32,64); ctx.fill();
-            } else if(type==='boss') {
-                ctx.fillStyle = '#cc00ff'; // 紫色BOSS
-                ctx.fillRect(10,10,44,44); ctx.strokeStyle='#fff'; ctx.lineWidth=4; ctx.strokeRect(10,10,44,44);
+                ctx.beginPath(); ctx.moveTo(32,60); ctx.lineTo(60,10); ctx.lineTo(4,10); ctx.fill();
             }
             return new THREE.CanvasTexture(cvs);
         },
         bullet: (isPlayer) => {
             const cvs = document.createElement('canvas'); cvs.width=16; cvs.height=32;
             const ctx = cvs.getContext('2d');
-            ctx.fillStyle = isPlayer ? '#ffff00' : '#ff0000';
-            ctx.fillRect(4,0,8,32);
+            ctx.fillStyle = isPlayer ? '#ffff00' : '#ff0055';
+            // 荧光感
+            ctx.shadowBlur = 5; ctx.shadowColor = ctx.fillStyle;
+            ctx.fillRect(6,4,4,24);
             return new THREE.CanvasTexture(cvs);
         },
         gold: () => {
             const cvs = document.createElement('canvas'); cvs.width=32; cvs.height=32;
             const ctx = cvs.getContext('2d');
-            ctx.fillStyle = '#ffd700'; ctx.beginPath(); ctx.arc(16,16,14,0,Math.PI*2); ctx.fill();
-            ctx.fillStyle = '#fff'; ctx.font='20px Arial'; ctx.fillText('$', 10, 22);
+            ctx.fillStyle = '#ffd700'; ctx.beginPath(); ctx.arc(16,16,12,0,Math.PI*2); ctx.fill();
+            ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.stroke();
+            ctx.fillStyle='#000'; ctx.font='bold 16px Arial'; ctx.textAlign='center'; ctx.textBaseline='middle';
+            ctx.fillText('$', 16, 17);
             return new THREE.CanvasTexture(cvs);
         }
     };
@@ -272,50 +279,46 @@
             scene.add(this.mesh);
         }
         remove() {
+            if(!this.active) return;
             this.active = false;
             scene.remove(this.mesh);
         }
         update() {}
         checkCollide(other) {
+            if(!other.active) return false;
             const dx = Math.abs(this.mesh.position.x - other.mesh.position.x);
             const dy = Math.abs(this.mesh.position.y - other.mesh.position.y);
-            return (dx < (this.width + other.width)/3) && (dy < (this.height + other.height)/3);
+            return (dx < (this.width + other.width)/2.5) && (dy < (this.height + other.height)/2.5);
         }
     }
 
-    // ================= 3. 游戏逻辑状态机 =================
+    // ================= 3. 游戏逻辑 =================
     const STATE = { MENU: 0, PLAY: 1, PAUSE: 2, GAMEOVER: 3, SHOP: 4, UPGRADE: 5 };
     let currentState = STATE.MENU;
     
-    // 游戏运行时变量
     let entities = { bullets: [], enemies: [], loots: [] };
     let player = null;
     let gameTime = 0;
-    let score = 0;
     let goldInGame = 0;
     let frames = 0;
 
-    // 玩家类
     class Player extends Entity {
         constructor() {
-            super(TextureFactory.player('#00ccff'), 0, -200, 50, 50);
+            super(TextureFactory.player('#00ccff'), 0, -200, 60, 60);
             this.hp = 3 + (GAME_DATA.equipped.armors.includes('a_shield') ? 2 : 0);
             this.maxHp = this.hp;
             this.lastShot = 0;
             this.magnet = GAME_DATA.equipped.armors.includes('a_magnet');
         }
         update(inputPos) {
-            // 跟随手势 (1:1 映射)
-            // inputPos 是 -1 ~ 1
-            const targetX = inputPos.x * (width/2 - 30);
-            const targetY = inputPos.y * (height/2 - 30);
-            
-            // 平滑移动
-            this.mesh.position.x += (targetX - this.mesh.position.x) * 0.2;
-            this.mesh.position.y += (targetY - this.mesh.position.y) * 0.2;
+            const targetX = inputPos.x * (width/2 - 40);
+            const targetY = inputPos.y * (height/2 - 40);
+            this.mesh.position.x += (targetX - this.mesh.position.x) * 0.15;
+            this.mesh.position.y += (targetY - this.mesh.position.y) * 0.15;
 
-            // 自动射击
-            if(frames - this.lastShot > (20 - GAME_DATA.upgrades.fireRate * 2)) {
+            // 射击
+            const fireInterval = Math.max(5, 20 - GAME_DATA.upgrades.fireRate * 2);
+            if(frames - this.lastShot > fireInterval) {
                 this.shoot();
                 this.lastShot = frames;
             }
@@ -323,18 +326,15 @@
         shoot() {
             const count = GAME_DATA.upgrades.bulletCount;
             const weapon = GAME_DATA.equipped.weapon;
-            
             for(let i=0; i<count; i++) {
                 const offset = (i - (count-1)/2) * 15;
-                const b = new Entity(TextureFactory.bullet(true), this.mesh.position.x + offset, this.mesh.position.y + 20, 10, 20);
-                b.speedY = 10;
-                if(weapon === 'w_scatter') b.speedX = offset * 0.1; // 散射
-                else b.speedX = 0;
-                
+                const b = new Entity(TextureFactory.bullet(true), this.mesh.position.x + offset, this.mesh.position.y + 30, 16, 32);
+                b.speedY = 15;
+                b.speedX = (weapon === 'w_scatter') ? offset * 0.15 : 0;
                 b.update = function() {
                     this.mesh.position.y += this.speedY;
                     this.mesh.position.x += this.speedX;
-                    if(this.mesh.position.y > height/2) this.remove();
+                    if(this.mesh.position.y > height/2 + 50) this.remove();
                 };
                 entities.bullets.push(b);
             }
@@ -347,18 +347,14 @@
     }
 
     function startGame() {
-        // 清理场景
         [...entities.bullets, ...entities.enemies, ...entities.loots].forEach(e => e.remove());
         entities = { bullets: [], enemies: [], loots: [] };
         if(player) player.remove();
 
         player = new Player();
-        score = 0;
         goldInGame = 0;
         gameTime = 0;
         switchScreen('screen-hud');
-        document.getElementById('screen-hud').classList.remove('hidden'); // 显示HUD
-        
         currentState = STATE.PLAY;
     }
 
@@ -366,13 +362,12 @@
         currentState = STATE.GAMEOVER;
         GAME_DATA.gold += goldInGame;
         saveGame();
-        
         document.getElementById('res-time').innerText = Math.floor(gameTime);
         document.getElementById('res-gold').innerText = goldInGame;
         switchScreen('screen-gameover');
     }
 
-    // ================= 4. UI 与 菜单控制 =================
+    // ================= 4. 菜单交互 =================
     const screens = ['screen-start', 'screen-shop', 'screen-upgrade', 'screen-gameover', 'screen-hud'];
     let menuIndex = 0;
     let menuItems = [];
@@ -383,7 +378,6 @@
         const active = document.getElementById(id);
         active.classList.remove('hidden');
         
-        // 重新获取当前页面的菜单项
         if(id !== 'screen-hud') {
             menuItems = Array.from(active.querySelectorAll('.menu-item'));
             menuIndex = 0;
@@ -398,26 +392,24 @@
         });
     }
 
-    // 菜单操作逻辑
     function handleMenuInput(handY, isFist) {
         const now = Date.now();
-        if (now - lastMenuMove > 400) { // 冷却延迟 400ms
-            if (handY < -0.3) { // 上
+        if (now - lastMenuMove > 400) { 
+            if (handY < -0.2) { 
                 menuIndex = (menuIndex - 1 + menuItems.length) % menuItems.length;
                 lastMenuMove = now;
                 updateMenuHighlight();
-            } else if (handY > 0.3) { // 下
+            } else if (handY > 0.2) { 
                 menuIndex = (menuIndex + 1) % menuItems.length;
                 lastMenuMove = now;
                 updateMenuHighlight();
             }
         }
 
-        if (isFist && now - lastMenuMove > 1000) { // 确认 (长冷却防止连点)
+        if (isFist && now - lastMenuMove > 1000) { 
             lastMenuMove = now;
             const action = menuItems[menuIndex];
             
-            // 路由逻辑
             if (currentState === STATE.MENU) {
                 if (action.id === 'btn-start') startGame();
                 else if (action.id === 'btn-shop') { initShop(); currentState = STATE.SHOP; switchScreen('screen-shop'); }
@@ -427,9 +419,7 @@
                     currentState = STATE.MENU;
                     switchScreen('screen-start');
                 } else {
-                    // 购买/升级逻辑
-                    const itemId = action.dataset.id;
-                    buyOrEquip(itemId);
+                    buyOrEquip(action.dataset.id);
                 }
             } else if (currentState === STATE.GAMEOVER) {
                 currentState = STATE.MENU;
@@ -438,7 +428,6 @@
         }
     }
 
-    // 构建商店 UI
     function initShop() {
         const list = document.getElementById('shop-list');
         list.innerHTML = '';
@@ -456,44 +445,49 @@
             list.appendChild(div);
         });
         menuItems = Array.from(list.querySelectorAll('.menu-item'));
-        // 添加返回按钮
         menuItems.push(document.querySelector('#screen-shop .menu-item:last-child'));
+        updateMenuHighlight();
     }
 
-    // 购买逻辑
     function buyOrEquip(id) {
-        // 如果是返回按钮，ID是 undefined，已经在 handleMenuInput 处理了
-        if(!id) return; 
-
-        // 检查是否是商店物品
+        if(!id) return;
         const shopItem = CONFIG.shop.find(i => i.id === id);
         if (shopItem) {
             if (!GAME_DATA.unlocked.includes(id)) {
                 if (GAME_DATA.gold >= shopItem.price) {
                     GAME_DATA.gold -= shopItem.price;
                     GAME_DATA.unlocked.push(id);
+                    // 自动装备
+                    if(shopItem.id.startsWith('w_')) GAME_DATA.equipped.weapon = id;
+                    if(shopItem.id.startsWith('a_')) GAME_DATA.equipped.armors.push(id);
                     saveGame();
-                    initShop(); // 刷新显示
+                    initShop(); 
                 }
+            } else {
+                // 已拥有，切换装备
+                if(shopItem.id.startsWith('w_')) GAME_DATA.equipped.weapon = id;
+                alert("装备已切换: " + shopItem.name);
             }
-            return;
         }
-        
-        // 检查是否是升级
-        // (略，逻辑类似，增加 upgrades 对应值)
     }
 
-    // ================= 5. 手势识别循环 =================
+    // ================= 5. MediaPipe =================
     const videoElement = document.getElementById('input-video');
     const canvasElement = document.getElementById('output-canvas');
     const canvasCtx = canvasElement.getContext('2d');
     
-    // 输入状态
     let handPos = { x: 0, y: 0 };
     let isHandDetected = false;
     let isFist = false;
 
     function onResults(results) {
+        // 更新状态提示
+        if(statusText.innerText.includes("初始化")) {
+            statusText.innerText = "系统就绪：请展示手掌";
+            statusText.style.color = "#00ff00";
+            statusText.style.borderColor = "#00ff00";
+        }
+
         canvasCtx.save();
         canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
         canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
@@ -501,37 +495,28 @@
         if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
             isHandDetected = true;
             const landmarks = results.multiHandLandmarks[0];
-            
-            // 画骨架
             drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: '#00FF00', lineWidth: 2});
             drawLandmarks(canvasCtx, landmarks, {color: '#FF0000', lineWidth: 1, radius: 2});
 
-            // 计算中心
             const cx = landmarks[9].x; 
             const cy = landmarks[9].y;
-            
-            // 坐标映射：MediaPipe (0~1) -> 游戏逻辑 (-1~1)
-            // 注意 X 轴翻转
             handPos.x = (0.5 - cx) * 2; 
-            handPos.y = (0.5 - cy) * 2; // 上是正，下是负
+            handPos.y = (0.5 - cy) * 2; 
 
             // 握拳检测
             const tips = [8, 12, 16, 20];
             let extended = 0;
             tips.forEach(i => {
-                if (landmarks[i].y < landmarks[i-2].y) extended++; // 简单判断手指伸直
+                if (landmarks[i].y < landmarks[i-2].y) extended++; 
             });
-            isFist = (extended < 2); // 握拳
+            isFist = (extended < 2); 
 
-            // --- 状态分发 ---
             if (currentState === STATE.PLAY) {
                 document.getElementById('pause-overlay').classList.add('hidden');
                 player.update(handPos);
             } else {
-                // 菜单控制
                 handleMenuInput(handPos.y, isFist);
             }
-
         } else {
             isHandDetected = false;
             if (currentState === STATE.PLAY) {
@@ -549,32 +534,29 @@
         onFrame: async () => { await hands.send({image: videoElement}); },
         width: 320, height: 240
     });
-    cameraUtils.start();
+    cameraUtils.start().catch(err => {
+        statusText.innerText = "❌ 摄像头启动失败";
+        statusText.style.background = "red";
+    });
 
-    // ================= 6. 游戏主循环 =================
+    // ================= 6. 游戏循环 =================
     function animate() {
         requestAnimationFrame(animate);
         
-        // 背景滚动
+        // 背景移动
         bgTex.offset.y -= 0.002;
 
         if (currentState === STATE.PLAY && isHandDetected) {
             frames++;
             gameTime += 1/60;
 
-            // 生成敌人 (简单逻辑)
+            // 刷怪 (60帧一次)
             if (frames % 60 === 0) {
-                const e = new Entity(TextureFactory.enemy('basic'), (Math.random()-0.5)*width, height/2 + 50, 40, 40);
-                e.hp = 1;
+                const e = new Entity(TextureFactory.enemy('basic'), (Math.random()-0.5)*width*0.8, height/2 + 50, 50, 50);
+                e.hp = 2; // 稍肉一点
                 e.update = function() {
-                    this.mesh.position.y -= 2;
-                    // 追踪玩家
-                    if(this.mesh.position.x < player.mesh.position.x) this.mesh.position.x += 0.5;
-                    else this.mesh.position.x -= 0.5;
-                    
-                    if(this.mesh.position.y < -height/2) this.remove();
-                    
-                    // 撞玩家
+                    this.mesh.position.y -= 3;
+                    if(this.mesh.position.y < -height/2 - 50) this.remove();
                     if(this.active && this.checkCollide(player)) {
                         this.remove(); player.hit();
                     }
@@ -582,38 +564,44 @@
                 entities.enemies.push(e);
             }
 
-            // 更新实体
+            // 更新子弹
             entities.bullets.forEach(b => b.update());
+            
+            // 更新敌人
             entities.enemies.forEach(e => {
                 e.update();
-                // 碰撞检测：子弹打敌人
                 entities.bullets.forEach(b => {
                     if(b.active && e.active && b.checkCollide(e)) {
                         b.remove(); e.hp--;
                         if(e.hp <= 0) {
                             e.remove();
-                            // 爆金币
-                            const g = new Entity(TextureFactory.gold(), e.mesh.position.x, e.mesh.position.y, 30, 30);
-                            g.update = function() {
-                                this.mesh.position.y -= 1;
-                                // 磁力
-                                if(player.magnet) {
-                                    this.mesh.position.x += (player.mesh.position.x - this.mesh.position.x)*0.1;
-                                    this.mesh.position.y += (player.mesh.position.y - this.mesh.position.y)*0.1;
-                                }
-                                if(this.checkCollide(player)) {
-                                    this.remove(); goldInGame += 10;
-                                    document.querySelector('#screen-hud .gold-display').innerText = goldInGame;
-                                }
-                            };
-                            entities.loots.push(g);
+                            score += 100;
+                            document.getElementById('hud-score').innerText = score;
+                            // 50% 爆率
+                            if(Math.random() > 0.5) {
+                                const g = new Entity(TextureFactory.gold(), e.mesh.position.x, e.mesh.position.y, 30, 30);
+                                g.update = function() {
+                                    this.mesh.position.y -= 2;
+                                    if(player.magnet) {
+                                        this.mesh.position.x += (player.mesh.position.x - this.mesh.position.x)*0.1;
+                                        this.mesh.position.y += (player.mesh.position.y - this.mesh.position.y)*0.1;
+                                    }
+                                    if(this.checkCollide(player)) {
+                                        this.remove(); goldInGame += 10;
+                                        document.querySelector('#screen-hud .gold-display').innerText = goldInGame;
+                                    }
+                                };
+                                entities.loots.push(g);
+                            }
                         }
                     }
                 });
             });
+            
+            // 更新掉落物
             entities.loots.forEach(l => l.update());
 
-            // 清理失效实体
+            // 清理
             entities.bullets = entities.bullets.filter(e => e.active);
             entities.enemies = entities.enemies.filter(e => e.active);
             entities.loots = entities.loots.filter(e => e.active);
@@ -623,4 +611,18 @@
     }
     animate();
 
+    window.addEventListener('resize', () => {
+        if(!container) return;
+        width = container.clientWidth;
+        height = container.clientHeight;
+        camera.left = -width/2; camera.right = width/2;
+        camera.top = height/2; camera.bottom = -height/2;
+        camera.updateProjectionMatrix();
+        renderer.setSize(width, height);
+    });
+
+} catch(e) {
+    console.error(e);
+    document.getElementById('status-text').innerText = "错误: " + e.message;
+}
 </script>
