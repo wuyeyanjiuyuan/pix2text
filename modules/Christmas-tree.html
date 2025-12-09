@@ -54,14 +54,14 @@
 
 <div id="tree-container">
     <div class="ui-layer">
-        <div id="status-text" class="status-pill">正在点亮掌中星河...</div>
+        <div id="status-text" class="status-pill">正在部署均匀力场...</div>
         <br>
         <label class="upload-btn">
             📷 上传照片
             <input type="file" id="file-input" accept="image/*" multiple>
         </label>
         <div style="margin-top:12px; font-size:12px; color:rgba(255,255,255,0.5); line-height:1.6;">
-            🖐️ 手势控制旋转方向<br>
+            🖐️ 手在中心=刹车 | 手在边缘=加速<br>
             ✊ 握拳：聚合 | 👌 捏合：抓取
         </div>
     </div>
@@ -79,7 +79,7 @@
 <script src="js/hands.js"></script>
 
 <script>
-    console.log(">>> [ChristmasTree] 星河霸主版启动");
+    console.log(">>> [ChristmasTree] 完美交互版启动");
 
     try {
         const container = document.getElementById('tree-canvas');
@@ -118,7 +118,7 @@
             return new THREE.CanvasTexture(cvs);
         }
 
-        // 闪光纹理
+        // 闪光纹理 (星芒)
         function createFlashTexture() {
             const cvs = document.createElement('canvas');
             cvs.width = 64; cvs.height = 64;
@@ -133,18 +133,15 @@
             return new THREE.CanvasTexture(cvs);
         }
         
-        // ★ 星尘纹理 (更亮更实) ★
+        // 星尘纹理
         function createDotTexture() {
             const cvs = document.createElement('canvas');
             cvs.width = 32; cvs.height = 32;
             const ctx = cvs.getContext('2d');
-            
-            // 加一个柔和的光晕，不只是一个点
             const gradient = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
             gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
-            gradient.addColorStop(0.5, 'rgba(200, 220, 255, 0.5)'); // 淡蓝光晕
+            gradient.addColorStop(0.5, 'rgba(200, 220, 255, 0.5)'); 
             gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
-            
             ctx.fillStyle = gradient;
             ctx.fillRect(0, 0, 32, 32);
             return new THREE.CanvasTexture(cvs);
@@ -168,16 +165,18 @@
         // ================= 3. 粒子系统 =================
         
         const PARTICLE_COUNT = 2000; 
-        const DUST_COUNT = 800; // ★ 星尘翻倍
+        const DUST_COUNT = 1500; // ★ 星尘增至3倍
         const FLASH_COUNT = 100;      
         
         const TREE_HEIGHT = 650;
         const TREE_BASE_RADIUS = 300;
 
         const particleGroup = new THREE.Group();
-        // ★ 注意：不再单独 scene.add(dustGroup)，而是把 dust 加到 particleGroup
+        const dustGroup = new THREE.Group();  
         const flashGroup = new THREE.Group(); 
         
+        // 渲染顺序
+        scene.add(dustGroup);     
         scene.add(particleGroup); 
         scene.add(flashGroup);    
 
@@ -210,7 +209,7 @@
         topStar.visible = false;
         scene.add(topStar);
 
-        // 3.2 生成主粒子 (实心球)
+        // 3.2 生成主粒子
         for (let i = 0; i < PARTICLE_COUNT; i++) {
             const mat = goldMats[Math.floor(Math.random() * goldMats.length)];
             const sprite = new THREE.Sprite(mat);
@@ -219,57 +218,29 @@
             particles.push(sprite);
         }
         
-        // 3.3 ★ 生成背景星尘 (加入 particleGroup) ★
+        // 3.3 生成背景星尘
         for (let i = 0; i < DUST_COUNT; i++) {
             const mat = new THREE.SpriteMaterial({
-                map: dotTex, 
-                color: 0xffffff, // 纯白最亮
-                transparent: true, 
-                opacity: 0.8,    // 提高不透明度
+                map: dotTex, color: 0xffffff, 
+                transparent: true, opacity: 0.6 + Math.random()*0.4, 
                 blending: THREE.AdditiveBlending
             });
             const sprite = new THREE.Sprite(mat);
             
-            // 分布在更外层 (半径 600 ~ 1200)
-            const r = 600 + Math.random() * 600;
+            const r = 800 + Math.random() * 800; // 范围更大
             const theta = Math.random() * Math.PI * 2;
             const phi = Math.acos(2 * Math.random() - 1);
             
-            // 计算初始散开位置
-            const spreadPos = new THREE.Vector3(
+            sprite.position.set(
                 r * Math.sin(phi) * Math.cos(theta),
                 r * Math.sin(phi) * Math.sin(theta),
                 r * Math.cos(phi)
             );
-            
-            // 设定位置
-            sprite.position.copy(spreadPos);
-            
-            // 尺寸加大
-            const s = Math.random() * 5 + 3; // 3~8
+            const s = Math.random() * 4 + 2;
             sprite.scale.set(s, s, 1);
             
-            // 数据绑定 (只在散开时存在，聚合时可以飞向树或者消失)
-            // 这里我们让它们聚合时飞向树的外部，形成一个光环
-            const treeAngle = Math.random() * Math.PI * 2;
-            const treeY = (Math.random() - 0.5) * TREE_HEIGHT * 1.5;
-            const treeR = 400 + Math.random() * 200; // 树外围
-            
-            sprite.userData = {
-                spreadPos: spreadPos,
-                treePos: new THREE.Vector3(
-                    Math.cos(treeAngle) * treeR,
-                    treeY,
-                    Math.sin(treeAngle) * treeR
-                ),
-                baseScale: s,
-                isDust: true,
-                blinkPhase: Math.random() * Math.PI * 2,
-                blinkSpeed: Math.random() * 0.005 + 0.002
-            };
-            
-            particleGroup.add(sprite); // ★ 关键：加入同一个组，跟随旋转
-            particles.push(sprite); // 加入动画循环
+            // 星尘不参与聚散，一直环绕
+            dustGroup.add(sprite);
         }
 
         // 3.4 闪光池
@@ -285,6 +256,8 @@
             });
             const sprite = new THREE.Sprite(mat);
             sprite.visible = false;
+            // 绑定数据，用于跟随
+            sprite.userData = { target: null };
             flashGroup.add(sprite);
             flashPool.push(sprite);
         }
@@ -322,7 +295,7 @@
             };
         }
 
-        // ================= 4. 照片上传 =================
+        // ================= 4. 照片上传 (均匀分布算法) =================
         const fileInput = document.getElementById('file-input');
         
         fileInput.addEventListener('change', function(e) {
@@ -355,22 +328,53 @@
             const mesh = new THREE.Mesh(geo, materials);
             mesh.userData.aspect = aspect;
             
-            // 找非照片、非星尘的粒子替换
-            let idx = Math.floor(Math.random() * particles.length);
-            let safety = 0;
-            while((particles[idx].userData.isPhoto || particles[idx].userData.isDust) && safety < 100) {
-                idx = Math.floor(Math.random() * particles.length);
-                safety++;
+            // ★★★ 核心：均匀分布算法 ★★★
+            // 随机采样 10 个候选点，选离其他照片最远的那个
+            let bestIdx = -1;
+            let maxMinDist = -1;
+            
+            for(let k=0; k<10; k++) {
+                // 随机找一个非照片的粒子
+                let tryIdx = Math.floor(Math.random() * particles.length);
+                let safety = 0;
+                while((particles[tryIdx].userData.isPhoto || particles[tryIdx].userData.isDust) && safety < 100) {
+                    tryIdx = Math.floor(Math.random() * particles.length);
+                    safety++;
+                }
+                
+                const candidate = particles[tryIdx];
+                
+                // 计算该候选点与已存在照片的最小距离
+                let minDist = Infinity;
+                if (photoMeshes.length === 0) {
+                    minDist = Infinity; // 第一张照片随便放
+                } else {
+                    for(let p of photoMeshes) {
+                        // 比较 TreePos (挂在树上的位置)
+                        const d = candidate.userData.treePos.distanceTo(p.userData.treePos);
+                        if(d < minDist) minDist = d;
+                    }
+                }
+                
+                // 如果这个候选点的“最小距离”比之前的都大，说明它更稀疏，更好
+                if (minDist > maxMinDist) {
+                    maxMinDist = minDist;
+                    bestIdx = tryIdx;
+                }
             }
-            const oldSprite = particles[idx];
             
+            // 使用选出的最佳位置
+            const oldSprite = particles[bestIdx];
             createParticleData(mesh, true);
+            // 强制覆盖为旧粒子的位置数据，保证位置一致
+            mesh.userData.treePos.copy(oldSprite.userData.treePos);
             
+            // 继承当前视觉位置
             mesh.position.copy(oldSprite.position);
             mesh.scale.set(0,0,0);
             
             particleGroup.remove(oldSprite);
-            particles.splice(idx, 1);
+            particles.splice(bestIdx, 1);
             
             particleGroup.add(mesh);
             photoMeshes.push(mesh);
@@ -549,7 +553,7 @@
         });
         cameraUtils.start();
 
-        // ================= 7. 渲染循环 =================
+        // ================= 7. 渲染循环 (含闪光跟随) =================
         function animate(time) {
             requestAnimationFrame(animate);
             TWEEN.update(time); 
@@ -561,6 +565,8 @@
                     if (dist < DEAD_ZONE) {
                         rotVelocity.x *= FRICTION_BRAKE;
                         rotVelocity.y *= FRICTION_BRAKE;
+                        if(Math.abs(rotVelocity.x) < 0.0001) rotVelocity.x = 0;
+                        if(Math.abs(rotVelocity.y) < 0.0001) rotVelocity.y = 0;
                     } else {
                         const targetSpeedX = -handPos.y * MAX_SPEED; 
                         const targetSpeedY = handPos.x * MAX_SPEED; 
@@ -578,31 +584,44 @@
                 particleGroup.rotation.y += 0.005;
                 particleGroup.rotation.x *= 0.9; 
             }
+            
+            // 星尘反向慢转
+            dustGroup.rotation.y -= 0.0005;
 
-            // B. 闪光特效
+            // B. ★★★ 闪光特效与位置更新 ★★★
             let activeFlashCount = 0;
-            flashGroup.children.forEach(f => { if(f.visible) activeFlashCount++; });
+            flashGroup.children.forEach(f => { 
+                if(f.visible) {
+                    activeFlashCount++;
+                    // ★ 核心：实时跟随目标粒子 ★
+                    if(f.userData.target) {
+                        const worldPos = new THREE.Vector3();
+                        // 获取目标粒子的当前世界坐标
+                        f.userData.target.getWorldPosition(worldPos);
+                        f.position.copy(worldPos);
+                    }
+                } 
+            });
+            
             if (activeFlashCount < 30 && Math.random() < 0.5) {
                 triggerRandomFlash();
             }
-            
-            // C. 星尘闪烁
-            particles.forEach(p => {
-                if(p.userData.isDust) {
-                    const s = Math.sin(time * p.userData.blinkSpeed + p.userData.blinkPhase);
-                    p.material.opacity = 0.4 + s * 0.2;
-                }
-            });
 
             renderer.render(scene, camera);
         }
         animate();
 
+        // 触发闪光 (绑定目标)
         function triggerRandomFlash() {
             const flash = flashGroup.children.find(s => !s.visible);
             if (!flash) return;
 
             const target = particles[Math.floor(Math.random() * particles.length)];
+            
+            // ★ 绑定目标粒子到闪光对象上
+            flash.userData.target = target;
+            
+            // 立即同步一次位置
             const worldPos = new THREE.Vector3();
             target.getWorldPosition(worldPos);
             flash.position.copy(worldPos);
@@ -618,7 +637,10 @@
                 .onComplete(() => {
                     new TWEEN.Tween(flash.material)
                         .to({ opacity: 0 }, 100)
-                        .onComplete(() => { flash.visible = false; })
+                        .onComplete(() => { 
+                            flash.visible = false; 
+                            flash.userData.target = null; // 释放绑定
+                        })
                         .start();
                 })
                 .start();
