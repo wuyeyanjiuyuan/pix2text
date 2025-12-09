@@ -2,10 +2,10 @@
     /* 容器样式 */
     #tree-container {
         position: relative; width: 100%; height: 600px;
-        background: #000000; /* 纯黑背景，衬托金光 */
+        background: #000000; 
         border-radius: 12px; overflow: hidden;
         box-shadow: 0 10px 40px rgba(0,0,0,0.9);
-        cursor: grab; /* 提示可交互 */
+        cursor: crosshair; /* 变成十字准星，更有操控感 */
     }
     
     #tree-canvas { 
@@ -33,7 +33,7 @@
         pointer-events: auto; cursor: pointer;
         display: inline-flex; align-items: center; gap: 8px;
         padding: 10px 20px; 
-        background: linear-gradient(135deg, #b8860b, #daa520); /* 金色按钮 */
+        background: linear-gradient(135deg, #b8860b, #daa520); 
         border: 1px solid rgba(255, 255, 255, 0.3); 
         color: #fff; font-weight: bold; text-shadow: 0 1px 2px rgba(0,0,0,0.3);
         border-radius: 25px; font-size: 14px; 
@@ -54,16 +54,15 @@
 
 <div id="tree-container">
     <div class="ui-layer">
-        <div id="status-text" class="status-pill">正在凝聚流金粒子...</div>
+        <div id="status-text" class="status-pill">正在填充实心星云...</div>
         <br>
         <label class="upload-btn">
             📷 上传照片
             <input type="file" id="file-input" accept="image/*" multiple>
         </label>
         <div style="margin-top:12px; font-size:12px; color:rgba(255,255,255,0.5); line-height:1.6;">
-            🖐️ 张手：控制旋转方向 (惯性)<br>
-            ✊ 握拳：聚合圣诞树<br>
-            👌 捏合：抓取照片
+            🖐️ 手在中心=刹车 | 手在边缘=给油<br>
+            ✊ 握拳：聚合 | 👌 捏合：抓取
         </div>
     </div>
 
@@ -80,7 +79,7 @@
 <script src="js/hands.js"></script>
 
 <script>
-    console.log(">>> [ChristmasTree] 流金版启动");
+    console.log(">>> [ChristmasTree] 操控优化版启动");
 
     try {
         const container = document.getElementById('tree-canvas');
@@ -93,7 +92,6 @@
 
         // ================= 1. 场景初始化 =================
         const scene = new THREE.Scene();
-        // 极淡的金色雾气，防止远处穿帮
         scene.fog = new THREE.FogExp2(0x000000, 0.0004); 
 
         const camera = new THREE.PerspectiveCamera(60, width / height, 1, 5000);
@@ -106,13 +104,11 @@
 
         // ================= 2. 材质与纹理 =================
         
-        // 金色光球纹理 (核心)
         function createGoldOrbTexture() {
             const cvs = document.createElement('canvas');
             cvs.width = 64; cvs.height = 64;
             const ctx = cvs.getContext('2d');
             const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
-            // 中心亮白 -> 中层金 -> 外层虚
             gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
             gradient.addColorStop(0.3, 'rgba(255, 215, 0, 0.9)'); 
             gradient.addColorStop(0.6, 'rgba(218, 165, 32, 0.4)'); 
@@ -122,13 +118,12 @@
             return new THREE.CanvasTexture(cvs);
         }
 
-        // 强力闪光纹理 (中心极亮)
         function createFlashTexture() {
             const cvs = document.createElement('canvas');
             cvs.width = 64; cvs.height = 64;
             const ctx = cvs.getContext('2d');
             const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
-            gradient.addColorStop(0, 'rgba(255, 255, 255, 1)'); // 纯白核心
+            gradient.addColorStop(0, 'rgba(255, 255, 255, 1)'); 
             gradient.addColorStop(0.4, 'rgba(255, 255, 200, 0.8)'); 
             gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
             ctx.fillStyle = gradient;
@@ -139,8 +134,6 @@
         const goldTex = createGoldOrbTexture();
         const flashTex = createFlashTexture();
 
-        // 默认金色材质 (Sprite)
-        // 预创建不同透明度的材质，增加层次感
         const matGoldHigh = new THREE.SpriteMaterial({ 
             map: goldTex, color: 0xffffff, transparent: true, opacity: 1.0, blending: THREE.AdditiveBlending 
         });
@@ -153,10 +146,10 @@
         
         const goldMats = [matGoldHigh, matGoldMid, matGoldLow];
 
-        // ================= 3. 粒子系统 =================
+        // ================= 3. 粒子系统 (实心球体优化) =================
         
-        const PARTICLE_COUNT = 1500; // 数量翻倍！
-        const FLASH_COUNT = 60;      // 闪光池数量翻3倍
+        const PARTICLE_COUNT = 2000; // ★ 增加数量以填充内部
+        const FLASH_COUNT = 60;      
         
         const TREE_HEIGHT = 650;
         const TREE_BASE_RADIUS = 300;
@@ -167,9 +160,8 @@
         scene.add(flashGroup);
 
         const particles = [];
-        const photoMeshes = []; // 存照片 Mesh (不是 Sprite 了)
+        const photoMeshes = []; 
         
-        // 3.1 树顶星星
         const topStar = new THREE.Mesh(
             new THREE.OctahedronGeometry(25, 0),
             new THREE.MeshBasicMaterial({ color: 0xffff88 }) 
@@ -178,7 +170,6 @@
         topStar.visible = false;
         scene.add(topStar);
 
-        // 3.2 生成金色粒子
         for (let i = 0; i < PARTICLE_COUNT; i++) {
             const mat = goldMats[Math.floor(Math.random() * goldMats.length)];
             const sprite = new THREE.Sprite(mat);
@@ -187,7 +178,7 @@
             particles.push(sprite);
         }
 
-        // 3.3 生成闪光池 (Flash Pool)
+        // 闪光池
         const flashPool = [];
         for(let i=0; i<FLASH_COUNT; i++) {
             const mat = new THREE.SpriteMaterial({
@@ -204,7 +195,6 @@
             flashPool.push(sprite);
         }
 
-        // --- 粒子位置计算 ---
         function createParticleData(obj, isPhoto) {
             // A. 树形态 (螺旋)
             const y = (Math.random() - 0.5) * TREE_HEIGHT; 
@@ -213,30 +203,29 @@
             const angle = Math.random() * Math.PI * 2 * 12;
             const treePos = new THREE.Vector3(Math.cos(angle)*radius, y, Math.sin(angle)*radius);
 
-            // B. 球形态 (扩大半径!)
-            // 你的需求：环绕球形增大，靠近上下沿
-            // 屏幕高度约 600，相机 Z=900，可视高度约 700~800
-            // 设半径为 550，足够填满屏幕
-            const spreadR = 550; 
+            // B. ★★★ 实心球形态 (Solid Sphere) ★★★
+            const maxR = 550; // 最大半径
             
-            // 均匀球体分布
-            const u = Math.random();
-            const v = Math.random();
-            const theta = 2 * Math.PI * u;
-            const phi = Math.acos(2 * v - 1);
+            // 均匀球体随机点算法：
+            // 半径使用立方根分布，保证内部密度均匀
+            const r = maxR * Math.cbrt(Math.random()); 
+            
+            // 随机角度
+            const theta = Math.random() * Math.PI * 2; // 水平角 0~360
+            const phi = Math.acos(2 * Math.random() - 1); // 垂直角
             
             const spreadPos = new THREE.Vector3(
-                spreadR * Math.sin(phi) * Math.cos(theta),
-                spreadR * Math.sin(phi) * Math.sin(theta),
-                spreadR * Math.cos(phi)
+                r * Math.sin(phi) * Math.cos(theta),
+                r * Math.sin(phi) * Math.sin(theta),
+                r * Math.cos(phi)
             );
 
             // 初始状态
             obj.position.copy(spreadPos);
             
-            // 大小 (粒子稍微不同大小)
-            let baseScale = Math.random() * 15 + 8; // 8~23
-            if (isPhoto) baseScale = 50; // 照片默认大小
+            // 大小
+            let baseScale = Math.random() * 15 + 8; 
+            if (isPhoto) baseScale = 50; 
             
             obj.scale.set(baseScale, baseScale, baseScale);
 
@@ -249,13 +238,12 @@
             };
         }
 
-        // ================= 4. 照片上传 (3D卡片 & 金色背面) =================
+        // ================= 4. 照片上传 =================
         const fileInput = document.getElementById('file-input');
         
         fileInput.addEventListener('change', function(e) {
             if (this.files.length > 0) {
                 statusText.innerText = `镀金 ${this.files.length} 张照片...`;
-                
                 Array.from(this.files).forEach((file) => {
                     const reader = new FileReader();
                     reader.onload = function(event) {
@@ -265,69 +253,59 @@
                             const aspect = img.width / img.height;
                             const tex = new THREE.TextureLoader().load(img.src);
                             tex.minFilter = THREE.LinearFilter; 
-                            
                             addPhotoMesh(tex, aspect);
                         }
                     };
                     reader.readAsDataURL(file);
                 });
-                
                 setTimeout(() => statusText.innerText = "照片已悬挂！捏合查看", 1500);
             }
         });
 
         function addPhotoMesh(texture, aspect) {
-            // 创建 3D 薄板 (BoxGeometry)
-            // 宽=1, 高=1, 厚=0.05
             const geo = new THREE.BoxGeometry(1, 1, 0.05);
-            
-            // 材质：正面照片，其他面金色
             const matPhoto = new THREE.MeshBasicMaterial({ map: texture });
-            const matGold = new THREE.MeshBasicMaterial({ color: 0xffd700 }); // 纯金
-            
-            // 材质数组：[右, 左, 上, 下, 前(照片), 后(金)]
+            const matGold = new THREE.MeshBasicMaterial({ color: 0xffd700 }); 
             const materials = [matGold, matGold, matGold, matGold, matPhoto, matGold];
             
             const mesh = new THREE.Mesh(geo, materials);
             mesh.userData.aspect = aspect;
             
-            // 替换一个普通粒子
             let idx = Math.floor(Math.random() * particles.length);
             const oldSprite = particles[idx];
             
             createParticleData(mesh, true);
             
-            // 继承旧位置
             mesh.position.copy(oldSprite.position);
             mesh.scale.set(0,0,0);
             
-            // 移除旧粒子，添加新 Mesh
             particleGroup.remove(oldSprite);
-            particles.splice(idx, 1); // 移除引用
+            particles.splice(idx, 1);
             
             particleGroup.add(mesh);
-            photoMeshes.push(mesh); // 存入照片组
+            photoMeshes.push(mesh);
             
-            // 弹窗动画
-            // 根据比例计算初始大小
             const h = 50; 
             const w = h * aspect;
             new TWEEN.Tween(mesh.scale).to({x:w, y:h, z:2}, 800).easing(TWEEN.Easing.Elastic.Out).start();
         }
 
-        // ================= 5. 交互状态 (手势追踪 & 惯性) =================
+        // ================= 5. 交互状态 (油门式操控) =================
         let currentState = 'spread'; 
         let isPinching = false;
         let activePhoto = null; 
         
-        // ★ 手势追踪变量 ★
-        let handPos = { x: 0, y: 0 }; // 手在屏幕的位置 (-1 ~ 1)
+        // 手势变量
+        let handPos = { x: 0, y: 0 };
         let isHandDetected = false;
         
-        // 旋转速度
-        let rotVelocity = { x: 0, y: 0 }; // 当前速度
-        const FRICTION = 0.95; // 摩擦力 (越小停得越快)
-        const SENSITIVITY = 0.05; // 手势灵敏度
+        // 旋转物理变量
+        let rotVelocity = { x: 0, y: 0 };
+        const MAX_SPEED = 0.03;  // ★ 降低最大速度 (之前太快)
+        const FRICTION_IDLE = 0.98; // 惯性滑行阻力 (手离开后)
+        const FRICTION_BRAKE = 0.85; // 刹车阻力 (手在中心)
+        const ACCELERATION = 0.002; // 加速度
+        const DEAD_ZONE = 0.15; // 中心死区范围 (0~1)
 
         function toTreeState() {
             if (currentState === 'tree') return;
@@ -347,7 +325,7 @@
         function toSpreadState() {
             if (currentState === 'spread') return;
             currentState = 'spread';
-            statusText.innerText = "✨ 流金球体模式";
+            statusText.innerText = "✨ 实心金球模式";
             topStar.visible = false;
 
             [...particles, ...photoMeshes].forEach(p => {
@@ -359,7 +337,6 @@
             });
         }
 
-        // ★ 智能抓取 + 尺寸限制 + 居中 ★
         function grabPhoto() {
             if (isPinching || photoMeshes.length === 0) return;
             
@@ -389,21 +366,20 @@
                 .easing(TWEEN.Easing.Back.Out)
                 .start();
 
-            // 2. 旋转归零 (正面朝向)
+            // 2. 旋转归零
             new TWEEN.Tween(activePhoto.rotation)
                 .to({ x: 0, y: 0, z: 0 }, 600)
                 .start();
 
-            // 3. ★ 尺寸限制 (Fit Screen) ★
+            // 3. ★ 尺寸限制 (缩小版) ★
             const aspect = activePhoto.userData.aspect;
-            // 限制最大宽高，防止超界
-            const MAX_H = 350; 
-            const MAX_W = 500;
+            // 目标高度 220 (约占屏幕 1/3，留出大量背景)
+            const MAX_H = 220; 
+            const MAX_W = 400;
             
             let targetH = MAX_H;
             let targetW = targetH * aspect;
             
-            // 如果计算出的宽超标，就按宽限制高
             if (targetW > MAX_W) {
                 targetW = MAX_W;
                 targetH = targetW / aspect;
@@ -424,8 +400,6 @@
             particleGroup.attach(activePhoto);
 
             const target = currentState === 'tree' ? activePhoto.userData.treePos : activePhoto.userData.spreadPos;
-            
-            // 恢复默认大小
             const h = 50; 
             const w = h * activePhoto.userData.aspect;
 
@@ -455,16 +429,12 @@
                 drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: '#00FF00', lineWidth: 2});
                 drawLandmarks(canvasCtx, landmarks, {color: '#FF0000', lineWidth: 1, radius: 2});
 
-                // ★ 计算手掌中心 (用于旋转控制)
-                // 取手腕(0)和中指根(9)的中点
+                // 计算手掌中心 (-1 ~ 1)
                 const cx = (landmarks[0].x + landmarks[9].x) / 2;
                 const cy = (landmarks[0].y + landmarks[9].y) / 2;
-                
-                // 映射到 -1 ~ 1 坐标系 (注意 MediaPipe x是反的，需要镜像处理)
-                handPos.x = (0.5 - cx) * 2; // 左边是正，右边是负 (Three.js 旋转方向)
+                handPos.x = (0.5 - cx) * 2; 
                 handPos.y = (0.5 - cy) * 2; 
 
-                // 手势识别
                 const wrist = landmarks[0];
                 const middleTip = landmarks[12];
                 const palmDist = Math.sqrt(Math.pow(middleTip.x - wrist.x, 2) + Math.pow(middleTip.y - wrist.y, 2));
@@ -496,47 +466,56 @@
         });
         cameraUtils.start();
 
-        // ================= 7. 渲染循环 (含物理惯性) =================
+        // ================= 7. 渲染循环 (油门物理引擎) =================
         function animate(time) {
             requestAnimationFrame(animate);
             TWEEN.update(time); 
 
-            // A. 旋转逻辑 (物理惯性核心)
+            // A. 旋转逻辑
             if (currentState === 'spread' && !isPinching) {
                 if (isHandDetected) {
-                    // 手在，施加力 (目标速度)
-                    // 手越靠边，转得越快
-                    const targetSpeedX = handPos.y * SENSITIVITY; // 上下移动控制X轴翻转
-                    const targetSpeedY = handPos.x * SENSITIVITY; // 左右移动控制Y轴旋转
+                    // 计算手离中心的距离 (0~1.414)
+                    const dist = Math.sqrt(handPos.x*handPos.x + handPos.y*handPos.y);
                     
-                    // 线性插值平滑启动
-                    rotVelocity.x += (targetSpeedX - rotVelocity.x) * 0.1;
-                    rotVelocity.y += (targetSpeedY - rotVelocity.y) * 0.1;
+                    if (dist < DEAD_ZONE) {
+                        // --- 刹车区 (Center) ---
+                        // 受到强力阻力，快速停下
+                        rotVelocity.x *= FRICTION_BRAKE;
+                        rotVelocity.y *= FRICTION_BRAKE;
+                        // 如果速度极小，强制归零防止抖动
+                        if(Math.abs(rotVelocity.x) < 0.0001) rotVelocity.x = 0;
+                        if(Math.abs(rotVelocity.y) < 0.0001) rotVelocity.y = 0;
+                        
+                    } else {
+                        // --- 油门区 (Outer) ---
+                        // 速度 = 偏移量 * 最大速度
+                        // 这样手推一点点就慢转，推到底就快转
+                        const targetSpeedX = handPos.y * MAX_SPEED; 
+                        const targetSpeedY = handPos.x * MAX_SPEED; 
+                        
+                        // 线性插值加速 (模拟引擎响应延迟)
+                        rotVelocity.x += (targetSpeedX - rotVelocity.x) * ACCELERATION * 10;
+                        rotVelocity.y += (targetSpeedY - rotVelocity.y) * ACCELERATION * 10;
+                    }
                 } else {
-                    // 手不在，施加摩擦力 (缓慢停下)
-                    rotVelocity.x *= FRICTION;
-                    rotVelocity.y *= FRICTION;
+                    // --- 惯性滑行区 (No Hand) ---
+                    // 手离开后，慢慢停下
+                    rotVelocity.x *= FRICTION_IDLE;
+                    rotVelocity.y *= FRICTION_IDLE;
                 }
                 
                 // 应用速度
                 particleGroup.rotation.x += rotVelocity.x;
                 particleGroup.rotation.y += rotVelocity.y;
                 
-                // 限制 X 轴翻转角度，防止翻底朝天太晕 (-45度 ~ 45度)
-                // particleGroup.rotation.x = Math.max(-0.8, Math.min(0.8, particleGroup.rotation.x));
             } else if (currentState === 'tree' && !isPinching) {
-                // 树形态自动旋转
                 particleGroup.rotation.y += 0.005;
-                // 复位X轴
-                particleGroup.rotation.x *= 0.9;
+                particleGroup.rotation.x *= 0.9; // 树要回正
             }
 
-            // B. 闪光特效 (Flash) - 范围缩小，数量增多
-            // 每次从池子里找几个没显示的
+            // B. 闪光特效
             let activeFlashCount = 0;
             flashGroup.children.forEach(f => { if(f.visible) activeFlashCount++; });
-            
-            // 只有当活跃闪光少于 10 个时才触发新的，避免太乱
             if (activeFlashCount < 10 && Math.random() < 0.2) {
                 triggerRandomFlash();
             }
@@ -545,15 +524,11 @@
         }
         animate();
 
-        // 触发闪光 (细碎版)
         function triggerRandomFlash() {
             const flash = flashGroup.children.find(s => !s.visible);
             if (!flash) return;
 
-            // 找个目标粒子 (要是可见的)
             const target = particles[Math.floor(Math.random() * particles.length)];
-            
-            // 设置位置
             const worldPos = new THREE.Vector3();
             target.getWorldPosition(worldPos);
             flash.position.copy(worldPos);
@@ -562,8 +537,6 @@
             flash.material.opacity = 1;
             flash.scale.set(0, 0, 1);
 
-            // 动画：快速变大 -> 变小消失 (模拟钻石反光)
-            // 范围缩小：最大只到 60 (之前是 120)
             new TWEEN.Tween(flash.scale)
                 .to({ x: 60, y: 60 }, 150)
                 .easing(TWEEN.Easing.Quadratic.Out)
