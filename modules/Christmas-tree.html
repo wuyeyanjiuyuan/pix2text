@@ -2,8 +2,7 @@
     /* 容器样式 */
     #tree-container {
         position: relative; width: 100%; height: 600px;
-        /* 背景改为纯黑，让金色粒子更亮 */
-        background: #000000; 
+        background: #050505; /* 纯黑背景，让闪光最亮 */
         border-radius: 12px; overflow: hidden;
         box-shadow: 0 10px 40px rgba(0,0,0,0.8);
     }
@@ -21,7 +20,7 @@
     
     .status-pill {
         display: inline-block; padding: 8px 16px;
-        background: rgba(255, 215, 0, 0.15); /* 金色底 */
+        background: rgba(255, 215, 0, 0.15); 
         border: 1px solid rgba(255, 215, 0, 0.4);
         border-radius: 30px; backdrop-filter: blur(8px);
         font-family: 'Segoe UI', sans-serif; font-size: 14px; 
@@ -55,7 +54,7 @@
 
 <div id="tree-container">
     <div class="ui-layer">
-        <div id="status-text" class="status-pill">正在从星尘中构建...</div>
+        <div id="status-text" class="status-pill">正在装饰圣诞树...</div>
         <br>
         <label class="upload-btn">
             📷 挂上照片
@@ -80,7 +79,7 @@
 <script src="js/hands.js"></script>
 
 <script>
-    console.log(">>> [ChristmasTree] 极光版启动");
+    console.log(">>> [ChristmasTree] 闪耀版启动");
 
     try {
         const container = document.getElementById('tree-canvas');
@@ -93,139 +92,181 @@
 
         // ================= 1. 场景初始化 =================
         const scene = new THREE.Scene();
-        // 纯黑背景 + 极淡的金色雾气，增加高级感
-        scene.fog = new THREE.FogExp2(0x000000, 0.001); 
+        // 稍微加一点雾，让远处的粒子暗下去，增加层次，但不要太浓防止变黑
+        scene.fog = new THREE.FogExp2(0x000000, 0.0006); 
 
         const camera = new THREE.PerspectiveCamera(60, width / height, 1, 5000);
-        camera.position.set(0, 0, 800); // 居中平视
+        camera.position.set(0, 0, 800); 
 
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         renderer.setSize(width, height);
         renderer.setPixelRatio(window.devicePixelRatio);
         container.appendChild(renderer.domElement);
 
-        // ★ 灯光系统：让几何体有立体感
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.2);
-        scene.add(ambientLight);
+        // ================= 2. 纹理生成 (回归 Canvas Sprite) =================
         
-        const pointLight = new THREE.PointLight(0xffaa00, 2, 1000); // 核心金光
-        pointLight.position.set(0, 0, 0);
-        scene.add(pointLight);
-
-        // ================= 2. 几何体材质库 =================
-        
-        // 我们使用 MeshStandardMaterial 并开启 emissive (自发光)
-        // 这样即使没有光照，它们也会亮，而且会有“光晕”的感觉
-        function createGlowingMaterial(color) {
-            return new THREE.MeshStandardMaterial({
-                color: color,
-                emissive: color,     // 自发光颜色
-                emissiveIntensity: 0.8, // 发光强度
-                roughness: 0.2,
-                metalness: 0.8
-            });
+        // 2.1 高清 Emoji 贴图
+        function createEmojiTexture(emoji) {
+            const size = 128; // 高清
+            const cvs = document.createElement('canvas');
+            cvs.width = size; cvs.height = size;
+            const ctx = cvs.getContext('2d');
+            ctx.font = '90px serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = "#ffffff"; // 纯白，确保显示原色
+            ctx.fillText(emoji, size/2, size/2);
+            return new THREE.CanvasTexture(cvs);
         }
 
-        const matGold = createGlowingMaterial(0xffaa00);  // 金色
-        const matRed = createGlowingMaterial(0xff0033);   // 红色
-        const matWhite = createGlowingMaterial(0xffffff); // 亮白
-        const matGreen = createGlowingMaterial(0x00aa44); // 墨绿
+        // 2.2 基础光点 (用于背景星尘)
+        function createDotTexture() {
+            const cvs = document.createElement('canvas');
+            cvs.width = 32; cvs.height = 32;
+            const ctx = cvs.getContext('2d');
+            ctx.beginPath();
+            ctx.arc(16, 16, 10, 0, Math.PI * 2);
+            ctx.fillStyle = "rgba(255,255,255,0.8)";
+            ctx.fill();
+            return new THREE.CanvasTexture(cvs);
+        }
 
-        // 几何形状：八面体(像钻石)、方块、四面体
-        const geoDiamond = new THREE.OctahedronGeometry(1, 0); 
-        const geoBox = new THREE.BoxGeometry(1, 1, 1);
-        const geoTetra = new THREE.TetrahedronGeometry(1);
+        // 2.3 ★★★ 核心特效：高亮闪光弹纹理 ★★★
+        function createFlashTexture() {
+            const size = 128;
+            const cvs = document.createElement('canvas');
+            cvs.width = size; cvs.height = size;
+            const ctx = cvs.getContext('2d');
+            
+            // 放射状渐变：中心极亮白 -> 外圈金黄 -> 边缘透明
+            const grad = ctx.createRadialGradient(size/2, size/2, 0, size/2, size/2, size/2);
+            grad.addColorStop(0, 'rgba(255, 255, 255, 1)');
+            grad.addColorStop(0.2, 'rgba(255, 255, 200, 1)');
+            grad.addColorStop(0.4, 'rgba(255, 215, 0, 0.8)'); // 金色
+            grad.addColorStop(1, 'rgba(255, 215, 0, 0)');
+            
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, size, size);
+            return new THREE.CanvasTexture(cvs);
+        }
+
+        const textures = [
+            createEmojiTexture('🎁'), createEmojiTexture('🔔'), 
+            createEmojiTexture('🎄'), createEmojiTexture('❄️'), 
+            createEmojiTexture('⭐'), createEmojiTexture('🍪'),
+            createEmojiTexture('🎀')
+        ];
+        
+        const dotTex = createDotTexture();
+        const flashTex = createFlashTexture();
 
         // ================= 3. 粒子系统构建 =================
         
         const PARTICLE_COUNT = 700; 
-        const DUST_COUNT = 400; // 辅助星尘数量
+        const DUST_COUNT = 400; // 外部星尘
         
-        const TREE_HEIGHT = 500; // 稍微改小一点，更精致
-        const TREE_BASE_RADIUS = 250;
+        const TREE_HEIGHT = 550;
+        const TREE_BASE_RADIUS = 280;
 
-        const particleGroup = new THREE.Group();
-        const dustGroup = new THREE.Group(); // 辅助粒子组
+        const particleGroup = new THREE.Group(); // 主树/球
+        const dustGroup = new THREE.Group();     // 外部星尘
+        const flashGroup = new THREE.Group();    // ★ 闪光特效层
+        
         scene.add(particleGroup);
         scene.add(dustGroup);
+        scene.add(flashGroup); // 放在最上层
 
         const particles = [];
         const photoParticles = [];
-        const dustParticles = [];
-
-        // 3.1 主粒子生成 (树/球)
+        
+        // 3.1 主粒子生成 (Emoji + 照片位)
         for (let i = 0; i < PARTICLE_COUNT; i++) {
-            // 随机选择形状和颜色
-            let geo = Math.random() > 0.5 ? geoDiamond : geoBox;
-            let mat;
-            const r = Math.random();
-            if (r > 0.6) mat = matGold;      // 40% 金色
-            else if (r > 0.8) mat = matRed;  // 20% 红色
-            else if (r > 0.95) mat = matWhite;// 5% 白色高光
-            else mat = matGreen;             // 35% 绿色底
-
-            const mesh = new THREE.Mesh(geo, mat);
-            createParticle(mesh, false);
+            const tex = textures[Math.floor(Math.random() * textures.length)];
+            const material = new THREE.SpriteMaterial({ 
+                map: tex, 
+                color: 0xffffff,
+                transparent: true,
+                opacity: 0.9,
+                depthTest: true, // 开启深度测试，有前后遮挡关系
+                depthWrite: false // 不写入深度，防止透明贴图互相裁剪
+            });
+            createParticle(material, false);
         }
 
-        // 3.2 辅助星尘生成 (永远漂浮在周围的小点)
-        // 这些粒子只负责营造氛围，不参与聚合
+        // 3.2 外部星尘 (营造球形氛围)
         for (let i = 0; i < DUST_COUNT; i++) {
-            const mesh = new THREE.Mesh(geoTetra, matGold);
-            // 随机分布在球体外部
-            const dist = 400 + Math.random() * 400;
+            const material = new THREE.SpriteMaterial({
+                map: dotTex,
+                color: 0xffdd44, // 金色尘埃
+                transparent: true,
+                opacity: 0.6,
+                blending: THREE.AdditiveBlending // 发光叠加
+            });
+            const sprite = new THREE.Sprite(material);
+            
+            // 球面随机分布 (半径 400~800)
+            const r = 400 + Math.random() * 400;
             const theta = Math.random() * Math.PI * 2;
             const phi = Math.acos(2 * Math.random() - 1);
             
-            mesh.position.set(
-                dist * Math.sin(phi) * Math.cos(theta),
-                dist * Math.sin(phi) * Math.sin(theta),
-                dist * Math.cos(phi)
+            sprite.position.set(
+                r * Math.sin(phi) * Math.cos(theta),
+                r * Math.sin(phi) * Math.sin(theta),
+                r * Math.cos(phi)
             );
             
-            // 很小
-            const s = Math.random() * 3 + 1;
-            mesh.scale.set(s, s, s);
-            
-            // 随机相位，用于闪烁动画
-            mesh.userData = {
-                phase: Math.random() * Math.PI * 2,
-                speed: Math.random() * 0.02 + 0.01
-            };
-            
-            dustGroup.add(mesh);
-            dustParticles.push(mesh);
+            const s = Math.random() * 3 + 2;
+            sprite.scale.set(s, s, 1);
+            dustGroup.add(sprite);
         }
 
-        // 树顶大星星
-        const topStar = new THREE.Mesh(
-            new THREE.OctahedronGeometry(20, 0),
-            new THREE.MeshBasicMaterial({ color: 0xffff88 }) 
-        );
-        topStar.position.set(0, TREE_HEIGHT/2 + 20, 0);
-        topStar.visible = false; 
+        // 3.3 ★★★ 闪光池 (Flash Pool) ★★★
+        // 预创建 20 个不可见的闪光精灵，循环使用
+        const flashPool = [];
+        for(let i=0; i<20; i++) {
+            const mat = new THREE.SpriteMaterial({
+                map: flashTex,
+                color: 0xffffff,
+                transparent: true,
+                opacity: 0,
+                blending: THREE.AdditiveBlending // 必须加法混合，产生爆闪感
+            });
+            const sprite = new THREE.Sprite(mat);
+            sprite.visible = false;
+            flashGroup.add(sprite);
+            flashPool.push(sprite);
+        }
+
+        // 树顶大星星 (这次用回 Sprite，保证发光不黑)
+        const topStarMat = new THREE.SpriteMaterial({
+            map: createEmojiTexture('⭐'),
+            color: 0xffff88,
+            blending: THREE.AdditiveBlending
+        });
+        const topStar = new THREE.Sprite(topStarMat);
+        topStar.scale.set(80, 80, 1);
+        topStar.position.set(0, TREE_HEIGHT/2 + 40, 0);
+        topStar.visible = false;
         scene.add(topStar);
 
-        // --- 核心粒子生成逻辑 ---
-        function createParticle(mesh, isPhoto) {
-            // 1. 计算【树形态】坐标 (严格居中)
-            // y 从 -250 到 250
+        // --- 粒子创建逻辑 ---
+        function createParticle(material, isPhoto) {
+            const sprite = new THREE.Sprite(material);
+            
+            // 树形态
             const y = (Math.random() - 0.5) * TREE_HEIGHT; 
-            const relY = (y + TREE_HEIGHT/2) / TREE_HEIGHT; // 0~1
-            // 螺旋参数
+            const relY = (y + TREE_HEIGHT/2) / TREE_HEIGHT; 
             const radius = TREE_BASE_RADIUS * Math.pow((1 - relY), 0.7) * (0.8 + Math.random()*0.4); 
-            const angle = Math.random() * Math.PI * 2 * 10;
+            const angle = Math.random() * Math.PI * 2 * 12;
             
             const treePos = new THREE.Vector3(
                 Math.cos(angle) * radius,
-                y, // 这样 y 就是以 0 为中心上下分布的
+                y,
                 Math.sin(angle) * radius
             );
 
-            // 2. 计算【球形态】坐标 (紧凑小球)
-            // 你的需求：比屏幕小，能看出来是球
-            const sphereR = 350; // 半径 350，在 Z=800 的相机里看起来很舒服
-            // 均匀球面分布算法
+            // 球形态 (紧凑小球)
+            const sphereR = 320; // 屏幕中心 320 半径
             const u = Math.random();
             const v = Math.random();
             const theta = 2 * Math.PI * u;
@@ -237,42 +278,37 @@
                 sphereR * Math.cos(phi)
             );
 
-            // 初始设为散开
-            mesh.position.copy(spreadPos);
+            sprite.position.copy(spreadPos);
             
             // 大小
-            let baseScale = isPhoto ? 40 : (Math.random() * 10 + 5);
-            // 照片保持比例
-            if (isPhoto && mesh.userData.aspect) {
-                mesh.scale.set(baseScale * mesh.userData.aspect, baseScale, 1);
-            } else {
-                mesh.scale.set(baseScale, baseScale, baseScale);
-            }
+            let baseScale = Math.random() * 25 + 15; // Emoji 大小
+            if (isPhoto) baseScale = 50; // 照片默认大小
             
-            // 随机旋转
-            mesh.rotation.set(Math.random()*3, Math.random()*3, Math.random()*3);
+            if (isPhoto && material.userData.aspect) {
+                sprite.scale.set(baseScale * material.userData.aspect, baseScale, 1);
+            } else {
+                sprite.scale.set(baseScale, baseScale, 1);
+            }
 
-            // 数据绑定
-            mesh.userData.treePos = treePos;
-            mesh.userData.spreadPos = spreadPos;
-            mesh.userData.baseScale = baseScale;
-            mesh.userData.isPhoto = isPhoto;
-            mesh.userData.aspect = mesh.userData.aspect || 1;
-            // ★ 闪烁参数：phase(相位), speed(闪烁速度)
-            mesh.userData.blinkPhase = Math.random() * Math.PI * 2;
-            mesh.userData.blinkSpeed = Math.random() * 2 + 1; // 1~3倍速
+            sprite.userData = {
+                treePos: treePos,
+                spreadPos: spreadPos,
+                baseScale: baseScale,
+                aspect: material.userData.aspect || 1,
+                isPhoto: isPhoto
+            };
 
-            particleGroup.add(mesh);
-            particles.push(mesh);
-            if (isPhoto) photoParticles.push(mesh);
+            particleGroup.add(sprite);
+            particles.push(sprite);
+            if (isPhoto) photoParticles.push(sprite);
         }
 
-        // ================= 4. 照片上传 (高清 & 原比例) =================
+        // ================= 4. 照片上传 (原比例 & 高清) =================
         const fileInput = document.getElementById('file-input');
         
         fileInput.addEventListener('change', function(e) {
             if (this.files.length > 0) {
-                statusText.innerText = `加载 ${this.files.length} 张照片...`;
+                statusText.innerText = `正在处理...`;
                 
                 Array.from(this.files).forEach((file) => {
                     const reader = new FileReader();
@@ -282,57 +318,49 @@
                         img.onload = () => {
                             const aspect = img.width / img.height;
                             const tex = new THREE.TextureLoader().load(img.src);
-                            tex.minFilter = THREE.LinearFilter; 
+                            tex.minFilter = THREE.LinearFilter; // 保证缩小时不糊
                             
-                            // 用 MeshBasicMaterial 保证照片不被光照染黑
-                            const mat = new THREE.MeshBasicMaterial({ 
+                            const mat = new THREE.SpriteMaterial({ 
                                 map: tex, 
-                                side: THREE.DoubleSide
+                                color: 0xffffff,
+                                transparent: true,
+                                userData: { aspect: aspect } // 存入比例
                             });
                             
-                            // 照片用 PlaneGeometry (扁平的)
-                            const geo = new THREE.PlaneGeometry(1, 1);
-                            const mesh = new THREE.Mesh(geo, mat);
-                            mesh.userData.aspect = aspect; // 存比例
-                            
-                            replaceParticleWithPhoto(mesh);
+                            replaceParticleWithPhoto(mat);
                         }
                     };
                     reader.readAsDataURL(file);
                 });
                 
-                setTimeout(() => statusText.innerText = "照片已挂载！捏合手指查看", 1500);
+                setTimeout(() => statusText.innerText = "照片已挂载！捏合查看", 1500);
             }
         });
 
-        function replaceParticleWithPhoto(newMesh) {
-            // 找一个非照片的普通粒子替换掉
+        function replaceParticleWithPhoto(newMat) {
             let idx = Math.floor(Math.random() * particles.length);
-            let safety = 0;
-            while(particles[idx].userData.isPhoto && safety < 100) {
+            // 找一个不是照片的粒子
+            while(particles[idx].userData.isPhoto) {
                 idx = Math.floor(Math.random() * particles.length);
-                safety++;
             }
-            const oldMesh = particles[idx];
+            const oldSprite = particles[idx];
             
-            // 放入系统
-            createParticle(newMesh, true);
-            const addedMesh = particles[particles.length - 1];
+            createParticle(newMat, true);
+            const newSprite = particles[particles.length - 1];
             
-            // 继承位置并做动画
-            addedMesh.position.copy(oldMesh.position);
-            addedMesh.scale.set(0,0,0);
+            newSprite.position.copy(oldSprite.position);
+            newSprite.scale.set(0,0,1);
             
-            particleGroup.remove(oldMesh);
+            particleGroup.remove(oldSprite);
             particles.splice(idx, 1);
             
             // 弹出动画
-            const h = addedMesh.userData.baseScale;
-            const w = h * addedMesh.userData.aspect;
-            new TWEEN.Tween(addedMesh.scale).to({x:w, y:h, z:1}, 600).easing(TWEEN.Easing.Elastic.Out).start();
+            const h = newSprite.userData.baseScale;
+            const w = h * newSprite.userData.aspect;
+            new TWEEN.Tween(newSprite.scale).to({x:w, y:h, z:1}, 600).easing(TWEEN.Easing.Elastic.Out).start();
         }
 
-        // ================= 5. 交互状态控制 (智能抓取) =================
+        // ================= 5. 交互状态 (修正捏取逻辑) =================
         let currentState = 'spread'; 
         let isPinching = false;
         let activePhoto = null; 
@@ -369,10 +397,11 @@
             });
         }
 
-        // 智能抓取：抓取离镜头最近的
+        // ★★★ 核心：完美照片展示逻辑 ★★★
         function grabPhoto() {
             if (isPinching || photoParticles.length === 0) return;
             
+            // 1. 找最近的照片
             let closestDist = Infinity;
             let closestPhoto = null;
             const worldPos = new THREE.Vector3();
@@ -391,23 +420,32 @@
             isPinching = true;
             activePhoto = closestPhoto;
             
-            // 剥离父级，挂到 Scene，保证绝对居中，不随树旋转
+            // 2. 剥离父级，确保静止
             scene.attach(activePhoto);
 
-            // 飞到正前方
+            // 3. 飞到正前方
             new TWEEN.Tween(activePhoto.position)
                 .to({ x: 0, y: 0, z: 600 }, 600)
                 .easing(TWEEN.Easing.Back.Out)
                 .start();
 
-            // 旋转归零 (正对屏幕)
-            new TWEEN.Tween(activePhoto.rotation)
-                .to({ x: 0, y: 0, z: 0 }, 600)
-                .start();
-
-            // 放大
-            const targetH = 300; 
-            const targetW = targetH * activePhoto.userData.aspect;
+            // 4. ★ 计算适应屏幕的大小 (Fit Screen) ★
+            // 目标占据屏幕高度的 60%
+            // 简单的透视估算：在 z=600, camera z=800 时，距离相机 200
+            // 为了视觉舒适，我们直接设一个合理的固定高度
+            const MAX_H = 300; 
+            const MAX_W = 400;
+            
+            const aspect = activePhoto.userData.aspect;
+            let targetH = MAX_H;
+            let targetW = targetH * aspect;
+            
+            // 如果太宽了，就按宽度限制
+            if (targetW > MAX_W) {
+                targetW = MAX_W;
+                targetH = targetW / aspect;
+            }
+            
             new TWEEN.Tween(activePhoto.scale)
                 .to({ x: targetW, y: targetH, z: 1 }, 600)
                 .easing(TWEEN.Easing.Back.Out)
@@ -420,7 +458,6 @@
             if (!isPinching || !activePhoto) return;
             isPinching = false;
             
-            // 放回 Group
             particleGroup.attach(activePhoto);
 
             const target = currentState === 'tree' ? activePhoto.userData.treePos : activePhoto.userData.spreadPos;
@@ -443,7 +480,6 @@
             if(statusText.innerText.includes("初始化")) {
                  statusText.innerText = "引擎就绪，请上传照片";
             }
-            
             canvasCtx.save();
             canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
             canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
@@ -482,49 +518,67 @@
         });
         cameraUtils.start();
 
-        // ================= 7. 渲染循环 (核心动画) =================
+        // ================= 7. 渲染循环 (含闪光特效) =================
         function animate(time) {
             requestAnimationFrame(animate);
             TWEEN.update(time); 
 
-            // A. 整体旋转逻辑
+            // A. 旋转
             if (currentState === 'tree' && !isPinching) {
-                particleGroup.rotation.y += 0.005; // 树自转
+                particleGroup.rotation.y += 0.005; 
                 topStar.rotation.y -= 0.02;
             } else if (currentState === 'spread') {
                 particleGroup.rotation.y += 0.001;
-                particleGroup.rotation.x = Math.sin(time * 0.0005) * 0.1; // 微微晃动
+                particleGroup.rotation.x = Math.sin(time * 0.0005) * 0.1;
             }
-            
-            // 辅助星尘反向慢转
             dustGroup.rotation.y -= 0.0005;
 
-            // B. ★★★ 粒子闪烁与自转 (Twinkle) ★★★
-            // 遍历所有粒子，让它们“呼吸”
-            particles.forEach(p => {
-                if (!p.userData.isPhoto) { // 照片不闪
-                    // 计算闪烁因子 (Sine Wave)
-                    const pulse = Math.sin(time * 0.003 * p.userData.blinkSpeed + p.userData.blinkPhase);
-                    
-                    // 改变发光强度 (0.5 ~ 1.5)
-                    // 注意：MeshStandardMaterial 的 emissiveIntensity 属性
-                    if (p.material.emissiveIntensity !== undefined) {
-                        p.material.emissiveIntensity = 0.8 + pulse * 0.4;
-                    }
-                    
-                    // 改变大小 (0.8 ~ 1.2 倍) - 产生跳动感
-                    const s = p.userData.baseScale * (1 + pulse * 0.2);
-                    p.scale.set(s, s, s);
-                    
-                    // 自身旋转
-                    p.rotation.x += 0.01;
-                    p.rotation.y += 0.01;
-                }
-            });
+            // B. ★★★ 触发随机闪光 (Flash Effect) ★★★
+            // 每帧有 5% 的概率触发一次闪光
+            if (Math.random() < 0.05) {
+                triggerRandomFlash();
+            }
 
             renderer.render(scene, camera);
         }
         animate();
+
+        // 触发闪光逻辑
+        function triggerRandomFlash() {
+            // 1. 找一个空闲的闪光精灵
+            const flashSprite = flashPool.find(s => !s.visible);
+            if (!flashSprite) return;
+
+            // 2. 找一个随机的 Emoji 粒子作为目标
+            const target = particles[Math.floor(Math.random() * particles.length)];
+            
+            // 3. 设置位置
+            // 获取 target 的世界坐标
+            const worldPos = new THREE.Vector3();
+            target.getWorldPosition(worldPos);
+            flashSprite.position.copy(worldPos);
+            
+            // 4. 激活
+            flashSprite.visible = true;
+            flashSprite.material.opacity = 1;
+            flashSprite.scale.set(0, 0, 1);
+
+            // 5. 动画：迅速变大 -> 慢慢消失
+            // 变大 (50ms)
+            new TWEEN.Tween(flashSprite.scale)
+                .to({ x: 120, y: 120 }, 100)
+                .easing(TWEEN.Easing.Quadratic.Out)
+                .onComplete(() => {
+                    // 变淡 (300ms)
+                    new TWEEN.Tween(flashSprite.material)
+                        .to({ opacity: 0 }, 300)
+                        .onComplete(() => {
+                            flashSprite.visible = false;
+                        })
+                        .start();
+                })
+                .start();
+        }
 
         window.addEventListener('resize', () => {
             if(!container) return;
